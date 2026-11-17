@@ -1,0 +1,64 @@
+:root{--encre:#d8d2c2;--fond:#141a10;--sang:#c23b2a;--bleu:#4d86f0;--olive:#8a9a5b}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--fond);color:var(--encre);
+  font-family:"Trebuchet MS","DejaVu Sans",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+#ecran{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.cache{display:none!important}
+button.choix{display:block;margin:10px auto;padding:10px 34px;font:700 15px/1 inherit;letter-spacing:.14em;
+  color:var(--encre);background:#22281a;border:2px solid #55603e;cursor:pointer}
+button.choix:hover{background:#31391f;border-color:var(--olive)}
+
+/* écran titre */
+#titre{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 38%,#2a3320 0%,#141a10 68%,#0a0d08 100%)}
+#titre-boite{text-align:center}
+#titre-marque{font:900 clamp(38px,7vw,74px)/1 inherit;letter-spacing:.16em;color:var(--encre);
+  text-shadow:0 3px 0 #000,0 0 34px rgba(194,59,42,.45)}
+#titre-sous{margin:14px 0 30px;font-size:13px;letter-spacing:.12em;color:#9aa287}
+#titre-version{margin-top:26px;font-size:12px;letter-spacing:.3em;color:#6d745c}
+#regles{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,13,8,.94);overflow:auto}
+#regles-boite{max-width:680px;padding:26px 30px}
+#regles-boite h2{letter-spacing:.2em;color:var(--sang);margin-bottom:14px}
+#regles-boite table{border-collapse:collapse;margin:0 auto 16px}
+#regles-boite td{padding:5px 12px;border-bottom:1px solid #2c3322;font-size:14px;vertical-align:top}
+#regles-boite td:first-child{white-space:nowrap;color:var(--olive);text-align:right}
+#regles-boite p{font-size:13px;line-height:1.5;color:#aab295;margin-bottom:18px}
+
+/* HUD */
+#hud{position:fixed;inset:0;pointer-events:none}
+#barre{position:absolute;top:0;left:0;right:0;display:flex;gap:18px;align-items:center;
+  padding:8px 14px;background:linear-gradient(#000c,#0000)}
+.bloc{display:flex;flex-direction:column;min-width:74px}
+.bloc .libelle{font-size:9px;letter-spacing:.24em;color:#8d9478}
+.bloc b{font-size:19px;letter-spacing:.08em}
+.bloc.arme b{font-size:13px;letter-spacing:.04em;color:var(--olive)}
+#hud-msg{margin-left:auto;font-size:15px;letter-spacing:.06em;color:#ffd98a;text-shadow:0 2px 3px #000;
+  opacity:0;transition:opacity .3s}
+#hud-msg.visible{opacity:1}
+#escouade{position:absolute;left:12px;bottom:12px;display:flex;gap:8px}
+.portrait{width:58px;height:66px;background:#0009;border:2px solid #3a4230;position:relative}
+.portrait.choisi{border-color:#ffd98a;box-shadow:0 0 10px #ffd98a55}
+.portrait.mort{filter:grayscale(1) brightness(.5)}
+.portrait .numero{position:absolute;top:1px;left:4px;font-size:10px;color:#9aa287}
+.portrait .sante{position:absolute;left:4px;right:4px;bottom:4px;height:5px;background:#3a2020}
+.portrait .sante i{display:block;height:100%;background:#6fc24d}
+.portrait .bonnet{position:absolute;left:50%;top:12px;transform:translateX(-50%);width:26px;height:22px;
+  border-radius:13px 13px 3px 3px;background:#2c4a8c;border-bottom:3px solid #1a2c55}
+.rouge .bonnet{background:#8c2c22;border-bottom-color:#55161a}
+#minicarte{position:absolute;right:12px;bottom:12px;background:#000a;border:2px solid #3a4230;
+  pointer-events:auto;cursor:pointer;image-rendering:pixelated}
+#reglages-vol{position:absolute;right:14px;top:10px;font-size:18px;color:#6d745c;pointer-events:auto;cursor:pointer}
+
+/* voiles et panneaux */
+#voile{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#000a;pointer-events:none}
+#voile-texte{font:900 clamp(30px,6vw,58px)/1 inherit;letter-spacing:.2em;color:var(--encre);text-shadow:0 3px 0 #000}
+#voile-texte.sang{color:var(--sang)}
+#voile-sous{margin-top:14px;font-size:15px;letter-spacing:.1em;color:#9aa287}
+#pause,#bilan{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000c}
+#pause-boite,#bilan-boite{text-align:center;padding:26px 40px;background:#171d12;border:2px solid #55603e}
+#pause-boite h2,#bilan-boite h2{letter-spacing:.22em;margin-bottom:16px;color:var(--encre)}
+#bilan-lignes{margin:0 auto 10px;border-collapse:collapse}
+#bilan-lignes td{padding:4px 16px;font-size:14px;border-bottom:1px solid #2c3322}
+#bilan-lignes td:first-child{text-align:right;color:#8d9478}
+#bilan-note{font-size:13px;color:#ffd98a;margin-bottom:14px;min-height:16px}

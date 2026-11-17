@@ -1,0 +1,25 @@
+{
+  "page": "dist/chair-a-canon.html",
+  "octets": 436796,
+  "gzip": 136735,
+  "sha256": "5435791c89b096e34fd5f7082b3de6d806df52593b742cf46ae8b723eb343ee4",
+  "moteur": "0.3.3",
+  "sources": {
+    "ferro/renderer.js": 209041,
+    "ferro/geometry.js": 16443,
+    "ferro/fmath.js": 19961,
+    "ferro/audio.js": 77233,
+    "ferro/input.js": 17991,
+    "ferro/engine.js": 2024,
+    "relief.js": 11639,
+    "decor.js": 9560,
+    "troupe.js": 6361,
+    "armes.js": 7876,
+    "ia.js": 7480,
+    "etincelles.js": 6237,
+    "son.js": 1963,
+    "vue.js": 3223,
+    "coque.js": 23537,
+    "main.js": 7272
+  }
+}

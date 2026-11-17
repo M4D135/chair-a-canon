@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>CHAIR À CANON</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141a10'/%3E%3Ccircle cx='16' cy='12' r='5' fill='%23c23b2a'/%3E%3Crect x='14.6' y='16' width='2.8' height='11' fill='%23d8d2c2'/%3E%3Cpath d='M17 17h8l-2.4 2.6L17 22z' fill='%23c23b2a'/%3E%3C/svg%3E">
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<canvas id="ecran"></canvas>
+
+<div id="hud" class="cache">
+  <div id="barre">
+    <div class="bloc"><span class="libelle">MISSION</span><b id="hud-mission">1</b></div>
+    <div class="bloc"><span class="libelle">ENNEMIS</span><b id="hud-ennemis">0</b></div>
+    <div class="bloc"><span class="libelle">VIES</span><b id="hud-vies">●●●</b></div>
+    <div class="bloc arme"><span class="libelle">ARMES</span><b id="hud-armes">MG ∞ · GRENADES 0 · ROQUETTES 0</b></div>
+    <div id="hud-msg"></div>
+  </div>
+  <div id="escouade"></div>
+  <canvas id="minicarte" width="188" height="188"></canvas>
+  <div id="reglages-vol" title="Le son démarre au premier clic">&#9835;</div>
+</div>
+
+<div id="titre">
+  <div id="titre-boite">
+    <div id="titre-marque">CHAIR&nbsp;À&nbsp;CANON</div>
+    <div id="titre-sous">une campagne procédurale — moteur FERRO — sans image ni son importés</div>
+    <div id="titre-menu">
+      <button id="btn-campagne" class="choix">CAMPAGNE</button>
+      <button id="btn-regles" class="choix">COMMENT JOUER</button>
+    </div>
+    <div id="titre-version">V__VERSION_JEU__</div>
+  </div>
+  <div id="regles" class="cache">
+    <div id="regles-boite">
+      <h2>COMMENT JOUER</h2>
+      <table>
+        <tr><td><b>Clic gauche</b></td><td>ordre au sol : avancer · sur un ennemi : ouvrir le feu · sur une caisse : ramasser</td></tr>
+        <tr><td><b>Clic gauche maintenu + glisser</b></td><td>encadrer plusieurs hommes</td></tr>
+        <tr><td><b>Clic droit (maintenu)</b></td><td>viser et tirer à la mitrailleuse sur le curseur</td></tr>
+        <tr><td><b>G</b> puis clic</td><td>grenade au point visé</td></tr>
+        <tr><td><b>R</b> puis clic</td><td>roquette (si disponible)</td></tr>
+        <tr><td><b>1 · 2 · 3 · 4</b></td><td>sélectionner un homme — <b>T</b> : tous</td></tr>
+        <tr><td><b>Ctrl+1..4</b> / <b>F1..F4</b></td><td>former les groupes / rappeler un groupe</td></tr>
+        <tr><td><b>Espace</b></td><td>ramener la caméra sur la sélection</td></tr>
+        <tr><td><b>WASD / bords / molette</b></td><td>déplacer et zoomer la caméra — clic sur la minicarte : s'y rendre</td></tr>
+        <tr><td><b>Échap</b></td><td>pause</td></tr>
+      </table>
+      <p>Objectif : éliminer toute la garnison, puis planter le drapeau au camp. Les balles tuent d'une seule touche ;
+      les grenades blessent dans un rayon. Les caisses vertes rendent la santé, les oranges donnent grenades et roquettes.</p>
+      <button id="btn-regles-retour" class="choix">RETOUR</button>
+    </div>
+  </div>
+</div>
+
+<div id="voile" class="cache"><div id="voile-texte"></div><div id="voile-sous"></div></div>
+
+<div id="pause" class="cache">
+  <div id="pause-boite">
+    <h2>PAUSE</h2>
+    <button id="btn-reprendre" class="choix">REPRENDRE</button>
+    <button id="btn-abandonner" class="choix">ABANDONNER LA MISSION</button>
+  </div>
+</div>
+
+<div id="bilan" class="cache">
+  <div id="bilan-boite">
+    <h2 id="bilan-titre">MISSION ACCOMPLIE</h2>
+    <table id="bilan-lignes"></table>
+    <div id="bilan-note"></div>
+    <button id="btn-bilan" class="choix">CONTINUER</button>
+  </div>
+</div>
+
+<!--MODULES-->
+</body>
+</html>
