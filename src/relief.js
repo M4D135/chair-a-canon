@@ -269,7 +269,7 @@
         return {
           skyTop: [.16, .30, .46], skyBottom: [.62, .68, .60], fog: [.55, .62, .58],
           sunDirection: [.42, .78, .31], sunColor: [1, .92, .74], ambient: [.30, .34, .33],
-          wind: .5, fogDensity: .006, biome: 'ilot'
+          wind: .5, fogDensity: 0, biome: 'ilot'
         };
       }
     };

@@ -97,7 +97,7 @@ button.choix:hover{background:#31391f;border-color:var(--olive)}
       <button id="btn-campagne" class="choix">CAMPAGNE</button>
       <button id="btn-regles" class="choix">COMMENT JOUER</button>
     </div>
-    <div id="titre-version">V0.11</div>
+    <div id="titre-version">V0.14</div>
   </div>
   <div id="regles" class="cache">
     <div id="regles-boite">
@@ -5238,7 +5238,7 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
         return {
           skyTop: [.16, .30, .46], skyBottom: [.62, .68, .60], fog: [.55, .62, .58],
           sunDirection: [.42, .78, .31], sunColor: [1, .92, .74], ambient: [.30, .34, .33],
-          wind: .5, fogDensity: .006, biome: 'ilot'
+          wind: .5, fogDensity: 0, biome: 'ilot'
         };
       }
     };
@@ -5557,6 +5557,7 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       grenades: o.grenades || 0, roquettes: o.roquettes || 0,
       cooldown: 0, rafale: 0, rafaleD: 0,
       alerte: 0, derniereVue: null, patrouille: null, waypoint: null,
+      bloque: 0, cote: 0, coteChoisi: 0, detour: null, fuiteX: 0, fuiteZ: 0,
       mortA: -1, tu: false
     };
   }
@@ -5574,10 +5575,14 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
     const pose = K.motion({ phase: allure.phase, walk: couche ? 0 : allure.amount, aim: !!visee });
     const yaw = visee ? u.dirTir : u.dir, c = Math.cos(yaw), s = Math.sin(yaw);
     const lean = couche ? Math.PI / 2 : 0;
-    const Mbase = K.mulM(K.euler(0, -yaw, 0), K.euler(lean, 0, 0));
+    // le monde du moteur est à main gauche (la caméra regarde (sin Y, −cos Y)) : pour que le nez
+    // du corps (−z, comme l'exige FRender) regarde la marche et la main droite soit du bon côté,
+    // le lacet du corps est π − cap, et les positions suivent les colonnes de cette rotation.
+    const ry = Math.PI - yaw;
+    const Mbase = K.mulM(K.euler(0, ry, 0), K.euler(lean, 0, 0));
     const point = p => couche
-      ? [u.x + p[0] * c - (.98 - p[1]) * s, y + .25 - p[2], u.z + p[0] * s + (.98 - p[1]) * c]
-      : [u.x + p[0] * c - p[2] * s, y + p[1] + (pose.bodyY || 0), u.z + p[0] * s + p[2] * c];
+      ? [u.x - p[0] * c - (.98 - p[1]) * s, y + .25 - p[2], u.z + p[0] * s - (.98 - p[1]) * c]
+      : [u.x - p[0] * c - p[2] * s, y + p[1] + (pose.bodyY || 0), u.z + p[0] * s - p[2] * c];
     const add = (shape, p, size, color, rot = [0, 0, 0], mat = 1) => sortie.push({
       shape, p: point(p), s: size, r: K.angles(K.mulM(Mbase, K.euler(...rot))), mat, color
     });
@@ -5626,44 +5631,81 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
     sortie.push({ shape: 'box', p: [u.x + Math.sin(dyt) * .42, epaule - .18, u.z + Math.cos(dyt) * .42], s: [.06, .74, .06], r: [Math.PI / 2 - .12, dyt, 0], mat: 7, color: [0.16, 0.16, 0.18] });
   }
 
-  // Avancer vers la cible avec évitement des obstacles et séparation des camarades.
+  // Avancer vers la cible : le routage à candidats de la foule d'Emprise — on note des directions
+  // tournées de moins en moins, on rejette celles butées à .6 m et 1.4 m, on garde le cap du côté
+  // où l'on s'est engagé. Un homme bloqué choisit un bord et n'en change pas ; bloqué trop
+  // longtemps, il renonce ou contourne par un point libre.
+  const ANGLES = [0, .58, -.58, 1.16, -1.16, 1.8, -1.8, Math.PI];
+
+  function libre(relief, x, z, r) {
+    if (!relief.dansCarte(x, z) || relief.estEau(x, z)) return false;
+    for (const o of relief.obstacles) {
+      if (!o.bloqueMarche) continue;
+      if (Math.hypot(x - o.x, z - o.z) < o.r + r) return false;
+    }
+    return true;
+  }
+
+  function route(u, relief, vx, vz) {
+    let best = -Infinity, bx = 0, bz = 0;
+    for (let k = 0; k < ANGLES.length; k++) {
+      const a = ANGLES[k], c = Math.cos(a), s = Math.sin(a);
+      const x = vx * c - vz * s, z = vz * c + vx * s;
+      const score = x * vx + z * vz + (x * u.fuiteX + z * u.fuiteZ) * .22;
+      if (score <= best) continue;
+      if (!libre(relief, u.x + x * .6, u.z + z * .6, .3)) continue;
+      if (!libre(relief, u.x + x * 1.4, u.z + z * 1.4, .3)) continue;
+      best = score; bx = x; bz = z;
+    }
+    return [bx, bz];
+  }
+
   function avancer(u, relief, camarades, dt) {
     if (!u.cible || u.etat === 'mort') { B.corps && B.corps.advanceGait(u.allure, 0, 0, dt); return false; }
     const ox = u.x, oz = u.z;
     const dx = u.cible.x - u.x, dz = u.cible.z - u.z, d = Math.hypot(dx, dz);
-    if (d < .38) { u.cible = null; B.corps && B.corps.advanceGait(u.allure, 0, 0, dt); return false; }
+    if (d < .38) { u.cible = null; u.bloque = 0; u.cote = 0; B.corps && B.corps.advanceGait(u.allure, 0, 0, dt); return false; }
     let vx = dx / d, vz = dz / d;
-    for (const o of relief.obstacles) {
-      if (!o.bloqueMarche) continue;
-      const ox2 = u.x - o.x, oz2 = u.z - o.z, dd = Math.hypot(ox2, oz2), rr = o.r + .42;
-      if (dd < rr && dd > 1e-4) { const p = (rr - dd) / rr * 1.9; vx += ox2 / dd * p; vz += oz2 / dd * p; }
-    }
+    // le point de contournement prime tant qu'il reste du chemin vers lui
+    if (u.detour && Math.hypot(u.detour.x - u.x, u.detour.z - u.z) > .5) {
+      const ddx = u.detour.x - u.x, ddz = u.detour.z - u.z, dd = Math.hypot(ddx, ddz);
+      vx = ddx / dd; vz = ddz / dd;
+    } else u.detour = null;
     for (const c of (camarades || [])) {
       if (c === u || c.etat === 'mort') continue;
       const ox2 = u.x - c.x, oz2 = u.z - c.z, dd = Math.hypot(ox2, oz2);
       if (dd < .85 && dd > 1e-4) { const p = (.85 - dd) / dd * .9; vx += ox2 * p; vz += oz2 * p; }
     }
     const l = Math.hypot(vx, vz) || 1; vx /= l; vz /= l;
-    const nx = u.x + vx * u.vitesse * dt, nz = u.z + vz * u.vitesse * dt;
-    if (!relief.estEau(nx, nz) && relief.dansCarte(nx, nz)) {
-      let coince = false;
-      for (const o of relief.obstacles) {
-        if (!o.bloqueMarche) continue;
-        if (Math.hypot(nx - o.x, nz - o.z) < o.r + .3) { coince = true; break; }
-      }
-      if (!coince) { u.x = nx; u.z = nz; }
-      else {
-        const tx = -vz, tz = vx;
-        for (const s of [1, -1]) {
-          const gx = u.x + (vx * .35 + tx * s * .9) * u.vitesse * dt, gz = u.z + (vz * .35 + tz * s * .9) * u.vitesse * dt;
-          let ok = relief.dansCarte(gx, gz) && !relief.estEau(gx, gz);
-          if (ok) for (const o of relief.obstacles) if (o.bloqueMarche && Math.hypot(gx - o.x, gz - o.z) < o.r + .3) { ok = false; break; }
-          if (ok) { u.x = gx; u.z = gz; break; }
-        }
-      }
-    }
-    u.dir = Math.atan2(vx, vz);
+    const dir = route(u, relief, vx, vz);
+    const nx = u.x + dir[0] * u.vitesse * dt, nz = u.z + dir[1] * u.vitesse * dt;
+    const avance = libre(relief, nx, nz, .26);
+    if (avance) { u.x = nx; u.z = nz; }
+    // bloqué = on n'a pas avancé, qu'on ait dévié ou non : sinon le compteur s'auto-efface et le détour ne vient jamais
     const moved = Math.hypot(u.x - ox, u.z - oz);
+    if (!avance || moved < .004) u.bloque = (u.bloque || 0) + dt;
+    else if (dir[0] === vx && dir[1] === vz) u.bloque = Math.max(0, (u.bloque || 0) - dt * 2);
+    if (u.bloque > .3 && !u.detour) {
+      // on s'engage d'un côté et on y reste : le bord est choisi une fois, pas à chaque image
+      if (!u.cote) u.cote = (u.id % 2 ? 1 : -1) * (u.bloque > 1.2 ? (u.coteChoisi || 1) : 1);
+      if (!u.coteChoisi) { u.coteChoisi = u.cote; }
+      const tx = -vz * u.cote, tz = vx * u.cote;
+      u.fuiteX = tx; u.fuiteZ = tz;
+      const px = u.x + (vx * .4 + tx) * 2.2, pz = u.z + (vz * .4 + tz) * 2.2;
+      if (libre(relief, px, pz, .3)) u.detour = { x: px, z: pz };
+    }
+    if (u.bloque > 3.2) {
+      // but injoignable : on vise le point libre le plus proche, sinon on renonce
+      const p = relief.pointLibre(u.cible.x, u.cible.z, .38);
+      if (p && Math.hypot(p.x - u.cible.x, p.z - u.cible.z) > 1.2) u.cible = { x: p.x, z: p.z };
+      else u.cible = null;
+      u.bloque = 0; u.cote = 0; u.coteChoisi = 0; u.detour = null;
+    }
+    if (moved > .05) {
+      u.bloque = Math.max(0, (u.bloque || 0) - dt);
+      if (!u.detour) { u.cote = 0; u.coteChoisi = 0; u.fuiteX = u.fuiteZ = 0; }
+    }
+    if (moved > .001) u.dir = Math.atan2(dir[0], dir[1]);
     B.corps && B.corps.advanceGait(u.allure, moved, moved / Math.max(dt, 1e-4), dt);
     return true;
   }
