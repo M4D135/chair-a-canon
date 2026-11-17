@@ -44,11 +44,19 @@
       if (S.ecran === 'bilan-fin') ecranTitre();
       else { S.mission++; lancerMission(S.mission); }
     });
-    if (d.mini) d.mini.addEventListener('pointerdown', e => {
-      const r = d.mini.getBoundingClientRect();
-      S.cam.cibleX = (e.clientX - r.left) / r.width * S.etat.relief.taille;
-      S.cam.cibleZ = (e.clientY - r.top) / r.height * S.etat.relief.taille;
-    });
+    if (d.mini) {
+      // comme dans Point de rupture : clic, déplacer la vue ; glisser, la suivre
+      const viserIci = e => {
+        const r = d.mini.getBoundingClientRect();
+        S.cam.viser((e.clientX - r.left) / r.width * S.etat.relief.taille, (e.clientY - r.top) / r.height * S.etat.relief.taille);
+      };
+      let glisseMini = false;
+      d.mini.addEventListener('pointerdown', e => { glisseMini = true; d.mini.setPointerCapture(e.pointerId); viserIci(e); });
+      d.mini.addEventListener('pointermove', e => { if (glisseMini) viserIci(e); });
+      const fin = () => { glisseMini = false; };
+      d.mini.addEventListener('pointerup', fin);
+      d.mini.addEventListener('pointercancel', fin);
+    }
   }
 
   function ecranTitre() {
@@ -146,10 +154,8 @@
       S.rendu.setNappes(relief.nappes().concat([relief.nappeEau()]));
     }
 
-    S.cam = B.vue.creer(S.toile);
-    S.cam.x = S.cam.cibleX = decor.spawn.x;
-    S.cam.z = S.cam.cibleZ = decor.spawn.z - 6;
-    S.cam.dist = 34;
+    S.cam = B.vue.creer(S.toile, relief);
+    S.cam.placer(decor.spawn.x, decor.spawn.z - 6, 30);
 
     S.mini = construireMinicarte(relief, decor);
     S.ecran = 'jeu';
@@ -202,18 +208,6 @@
       }
     }
     const x = frappe.x, z = frappe.z;
-    if (S.mode === 'grenade') {
-      const u = bleus().find(b => b.grenades > 0);
-      if (u && B.armes.tirerGrenade(etat, u, { x, z }, etat.relief)) { etat.stats.grenades++; S.son && S.son.grenade(u.x, S.cam); }
-      S.mode = null;
-      return;
-    }
-    if (S.mode === 'roquette') {
-      const u = bleus().find(b => b.roquettes > 0);
-      if (u && B.armes.tirerRoquette(etat, u, { x, z }, etat.relief)) { S.son && S.son.roquette(u.x, S.cam); }
-      S.mode = null;
-      return;
-    }
     // avancer en formation
     const sel = S.selection.slice();
     sel.forEach((u, k) => {
@@ -238,22 +232,47 @@
 
   function ordreTirOuvert(point) { S.droit = point ? { x: point.x, z: point.z } : null; }
 
+  // grenade ou roquette posée au clic gauche (le mode est armé par G ou R)
+  function poserProjectile(frappe) {
+    if (!S.etat || !frappe) return false;
+    const etat = S.etat;
+    if (S.mode === 'grenade') {
+      const u = bleus().find(b => b.grenades > 0);
+      if (u && B.armes.tirerGrenade(etat, u, { x: frappe.x, z: frappe.z }, etat.relief)) { etat.stats.grenades++; S.son && S.son.grenade(u.x, S.cam); }
+      S.mode = null;
+      return true;
+    }
+    if (S.mode === 'roquette') {
+      const u = bleus().find(b => b.roquettes > 0);
+      if (u && B.armes.tirerRoquette(etat, u, { x: frappe.x, z: frappe.z }, etat.relief)) { S.son && S.son.roquette(u.x, S.cam); }
+      S.mode = null;
+      return true;
+    }
+    return false;
+  }
+
+  // clic gauche court : l'homme sous le curseur ; Maj pour ajouter au groupe sélectionné
+  function selectionClic(frappe, mx, my, ajouter) {
+    if (!S.etat) return;
+    if (frappe && frappe.type === 'unite' && frappe.unite.camp === 'bleu' && frappe.unite.etat !== 'mort') {
+      const u = frappe.unite;
+      if (ajouter) u.selectionne = !u.selectionne;
+      else { for (const v of S.escouade) v.selectionne = false; u.selectionne = true; }
+      S.selection = bleus().filter(v => v.selectionne);
+      if (!S.selection.length) selectionTous();
+      return;
+    }
+    if (ajouter) return;
+    selectionCadre(mx - 10, my - 10, mx + 10, my + 10);
+  }
+
   function selectionCadre(x0, y0, x1, y1) {
-    if (!S.etat || !S.toile) return;
-    const c = S.toile, w = c.clientWidth || 1, h = c.clientHeight || 1;
-    const c3 = B.vue.camera3d(S.cam, S.etat.relief);
-    const a = B.vue.axes(S.cam);
-    const tan = Math.tan(S.cam.fov * Math.PI / 360), aspect = w / h;
+    if (!S.etat || !S.toile || !S.cam) return;
+    const xa = Math.min(x0, x1), xb = Math.max(x0, x1), ya = Math.min(y0, y1), yb = Math.max(y0, y1);
     let trouve = false;
     for (const u of bleus()) {
-      const uy = S.etat.relief.hauteur(u.x, u.z) + .9;
-      const rx = u.x - c3.pos[0], ry = uy - c3.pos[1], rz = u.z - c3.pos[2];
-      const zc = rx * a.forward[0] + ry * a.forward[1] + rz * a.forward[2];
-      if (zc < 1) continue;
-      const xc = rx * a.right[0] + ry * a.right[1] + rz * a.right[2];
-      const yc = rx * a.up[0] + ry * a.up[1] + rz * a.up[2];
-      const sx = (xc / (zc * tan * aspect) + 1) / 2 * w, sy = (1 - yc / (zc * tan)) / 2 * h;
-      if (sx >= Math.min(x0, x1) && sx <= Math.max(x0, x1) && sy >= Math.min(y0, y1) && sy <= Math.max(y0, y1)) { u.selectionne = true; trouve = true; }
+      const e = S.cam.projeter(u.x, S.etat.relief.hauteur(u.x, u.z) + .9, u.z);
+      if (e && e[0] >= xa && e[0] <= xb && e[1] >= ya && e[1] <= yb) { u.selectionne = true; trouve = true; }
       else u.selectionne = false;
     }
     if (trouve) S.selection = bleus().filter(u => u.selectionne);
@@ -550,8 +569,8 @@
   }
 
   B.jeu = {
-    S, maj, mailler, ordreClic, ordreTirOuvert, selectionCadre, selectionUn, selectionTous,
-    selectionGroupe, definirGroupe, ecranTitre, nouvelleCampagne, lancerMission, brancherDom,
-    voiler, message, bleus
+    S, maj, mailler, ordreClic, ordreTirOuvert, selectionCadre, selectionClic, poserProjectile,
+    selectionUn, selectionTous, selectionGroupe, definirGroupe, ecranTitre, nouvelleCampagne,
+    lancerMission, brancherDom, voiler, message, bleus
   };
 })(typeof window !== 'undefined' ? window : globalThis);

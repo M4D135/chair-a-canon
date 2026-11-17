@@ -49,6 +49,40 @@
       h[j * n + i] = v * 12.5;
     }
 
+    // Combler les cuvettes isolées : un creux sous la mer mais cerné de terre n'est pas une baie,
+    // c'est une flaque où la nappe de mer affleurerait en plein milieu de l'herbe.
+    const RAY = 3, bouchons = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      if (h[j * n + i] >= EAU - .06) continue;
+      let lePlusHaut = -Infinity;
+      for (let dj = -RAY; dj <= RAY; dj++) for (let di = -RAY; di <= RAY; di++) {
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+        if (h[jj * n + ii] > lePlusHaut) lePlusHaut = h[jj * n + ii];
+      }
+      if (lePlusHaut > EAU + .5) { h[j * n + i] = EAU + .04; bouchons.push(j * n + i); }
+    }
+    // ramener la pente sous .55 m par case : on abaisse le haut partout, on ne remonte que les bouchons
+    const estBouchonSet = new Set(bouchons);
+    for (let passe = 0; passe < 48; passe++) {
+      let bouge = false;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const c = j * n + i;
+        let bas = Infinity, haut = -Infinity;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ii = i + di, jj = j + dj;
+          if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+          const v = h[jj * n + ii];
+          if (v < bas) bas = v; if (v > haut) haut = v;
+        }
+        const avant = h[c];
+        let v = Math.min(h[c], bas + .55);
+        if (h[c] < haut - .55 && estBouchonSet.has(c)) v = Math.max(v, haut - .55);
+        if (v !== avant) { h[c] = v; bouge = true; }
+      }
+      if (!bouge) break;
+    }
+
     const R = {
       taille, pas, n, graine, eau: EAU, h,
       obstacles: [],      // {x, z, r, h, bloqueMarche, bloqueTir}
@@ -167,6 +201,15 @@
       nappes() {
         const tuiles = [], T = 12;
         const herbe = [.17, .33, .13], herbeSombre = [.11, .22, .10], sable = [.72, .62, .40], roche = [.40, .38, .33], profond = [.05, .15, .19];
+        // le sable ne borde que la mer : une cellule basse perdue dans l'herbe reste de l'herbe
+        const presDeLeau = new Uint8Array(n * n);
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+          for (let dj = -4; dj <= 4 && !presDeLeau[j * n + i]; dj++) for (let di = -4; di <= 4; di++) {
+            const ii = i + di, jj = j + dj;
+            if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+            if (h[jj * n + ii] < EAU) { presDeLeau[j * n + i] = 1; break; }
+          }
+        }
         const nb = Math.ceil((n - 1) / T);
         for (let tj = 0; tj < nb; tj++) for (let ti = 0; ti < nb; ti++) {
           const i0 = ti * T, j0 = tj * T, i1 = Math.min(n - 1, i0 + T), j1 = Math.min(n - 1, j0 + T);
@@ -181,7 +224,7 @@
             const ln = Math.hypot(gx, 1, gz) || 1;
             let col, mat = 8;
             if (y <= EAU - .5) { col = profond; }
-            else if (y < .75) { const t = hach(i * 3, j * 7, graine + 5); col = [sable[0] - t * .07, sable[1] - t * .07, sable[2] - t * .09]; }
+            else if (y < .75 && presDeLeau[j * n + i]) { const t = hach(i * 3, j * 7, graine + 5); col = [sable[0] - t * .07, sable[1] - t * .07, sable[2] - t * .09]; }
             else {
               const t = fbm(x / 6, z / 6, graine + 77, 2);
               col = [herbe[0] + t * .1, herbe[1] + t * .14, herbe[2] + t * .06];

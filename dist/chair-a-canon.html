@@ -70,6 +70,7 @@ button.choix:hover{background:#31391f;border-color:var(--olive)}
 #bilan-lignes td{padding:4px 16px;font-size:14px;border-bottom:1px solid #2c3322}
 #bilan-lignes td:first-child{text-align:right;color:#8d9478}
 #bilan-note{font-size:13px;color:#ffd98a;margin-bottom:14px;min-height:16px}
+#cadre{position:fixed;border:1px solid #ffd75a;background:rgba(255,215,90,.12);pointer-events:none;z-index:6}
 </style>
 </head>
 <body>
@@ -96,21 +97,23 @@ button.choix:hover{background:#31391f;border-color:var(--olive)}
       <button id="btn-campagne" class="choix">CAMPAGNE</button>
       <button id="btn-regles" class="choix">COMMENT JOUER</button>
     </div>
-    <div id="titre-version">V0.3</div>
+    <div id="titre-version">V0.11</div>
   </div>
   <div id="regles" class="cache">
     <div id="regles-boite">
       <h2>COMMENT JOUER</h2>
       <table>
-        <tr><td><b>Clic gauche</b></td><td>ordre au sol : avancer · sur un ennemi : ouvrir le feu · sur une caisse : ramasser</td></tr>
-        <tr><td><b>Clic gauche maintenu + glisser</b></td><td>encadrer plusieurs hommes</td></tr>
-        <tr><td><b>Clic droit (maintenu)</b></td><td>viser et tirer à la mitrailleuse sur le curseur</td></tr>
+        <tr><td><b>Clic gauche maintenu</b></td><td>tirer à la mitrailleuse sur le curseur (maintenu = tir continu)</td></tr>
+        <tr><td><b>Clic gauche</b></td><td>sélectionner un homme — <b>glisser</b> : encadrer plusieurs hommes</td></tr>
+        <tr><td><b>Clic droit</b></td><td>déplacer l'escouade sélectionnée · sur un ennemi : l'attaquer</td></tr>
         <tr><td><b>G</b> puis clic</td><td>grenade au point visé</td></tr>
         <tr><td><b>R</b> puis clic</td><td>roquette (si disponible)</td></tr>
         <tr><td><b>1 · 2 · 3 · 4</b></td><td>sélectionner un homme — <b>T</b> : tous</td></tr>
         <tr><td><b>Ctrl+1..4</b> / <b>F1..F4</b></td><td>former les groupes / rappeler un groupe</td></tr>
         <tr><td><b>Espace</b></td><td>ramener la caméra sur la sélection</td></tr>
-        <tr><td><b>WASD / bords / molette</b></td><td>déplacer et zoomer la caméra — clic sur la minicarte : s'y rendre</td></tr>
+        <tr><td><b>WASD / flèches / bords</b></td><td>déplacer la caméra — <b>molette</b> : zoomer au curseur</td></tr>
+        <tr><td><b>Alt+clic ou clic du milieu</b></td><td>saisir la carte à la main — <b>Q/E</b> ou <b>Maj+molette</b> : tourner</td></tr>
+        <tr><td><b>Minicarte</b></td><td>clic ou glisser : déplacer la vue</td></tr>
         <tr><td><b>Échap</b></td><td>pause</td></tr>
       </table>
       <p>Objectif : éliminer toute la garnison, puis planter le drapeau au camp. Les balles tuent d'une seule touche ;
@@ -120,6 +123,7 @@ button.choix:hover{background:#31391f;border-color:var(--olive)}
   </div>
 </div>
 
+<div id="cadre" hidden></div>
 <div id="voile" class="cache"><div id="voile-texte"></div><div id="voile-sous"></div></div>
 
 <div id="pause" class="cache">
@@ -5014,6 +5018,40 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       h[j * n + i] = v * 12.5;
     }
 
+    // Combler les cuvettes isolées : un creux sous la mer mais cerné de terre n'est pas une baie,
+    // c'est une flaque où la nappe de mer affleurerait en plein milieu de l'herbe.
+    const RAY = 3, bouchons = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      if (h[j * n + i] >= EAU - .06) continue;
+      let lePlusHaut = -Infinity;
+      for (let dj = -RAY; dj <= RAY; dj++) for (let di = -RAY; di <= RAY; di++) {
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+        if (h[jj * n + ii] > lePlusHaut) lePlusHaut = h[jj * n + ii];
+      }
+      if (lePlusHaut > EAU + .5) { h[j * n + i] = EAU + .04; bouchons.push(j * n + i); }
+    }
+    // ramener la pente sous .55 m par case : on abaisse le haut partout, on ne remonte que les bouchons
+    const estBouchonSet = new Set(bouchons);
+    for (let passe = 0; passe < 48; passe++) {
+      let bouge = false;
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const c = j * n + i;
+        let bas = Infinity, haut = -Infinity;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ii = i + di, jj = j + dj;
+          if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+          const v = h[jj * n + ii];
+          if (v < bas) bas = v; if (v > haut) haut = v;
+        }
+        const avant = h[c];
+        let v = Math.min(h[c], bas + .55);
+        if (h[c] < haut - .55 && estBouchonSet.has(c)) v = Math.max(v, haut - .55);
+        if (v !== avant) { h[c] = v; bouge = true; }
+      }
+      if (!bouge) break;
+    }
+
     const R = {
       taille, pas, n, graine, eau: EAU, h,
       obstacles: [],      // {x, z, r, h, bloqueMarche, bloqueTir}
@@ -5132,6 +5170,15 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       nappes() {
         const tuiles = [], T = 12;
         const herbe = [.17, .33, .13], herbeSombre = [.11, .22, .10], sable = [.72, .62, .40], roche = [.40, .38, .33], profond = [.05, .15, .19];
+        // le sable ne borde que la mer : une cellule basse perdue dans l'herbe reste de l'herbe
+        const presDeLeau = new Uint8Array(n * n);
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+          for (let dj = -4; dj <= 4 && !presDeLeau[j * n + i]; dj++) for (let di = -4; di <= 4; di++) {
+            const ii = i + di, jj = j + dj;
+            if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+            if (h[jj * n + ii] < EAU) { presDeLeau[j * n + i] = 1; break; }
+          }
+        }
         const nb = Math.ceil((n - 1) / T);
         for (let tj = 0; tj < nb; tj++) for (let ti = 0; ti < nb; ti++) {
           const i0 = ti * T, j0 = tj * T, i1 = Math.min(n - 1, i0 + T), j1 = Math.min(n - 1, j0 + T);
@@ -5146,7 +5193,7 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
             const ln = Math.hypot(gx, 1, gz) || 1;
             let col, mat = 8;
             if (y <= EAU - .5) { col = profond; }
-            else if (y < .75) { const t = hach(i * 3, j * 7, graine + 5); col = [sable[0] - t * .07, sable[1] - t * .07, sable[2] - t * .09]; }
+            else if (y < .75 && presDeLeau[j * n + i]) { const t = hach(i * 3, j * 7, graine + 5); col = [sable[0] - t * .07, sable[1] - t * .07, sable[2] - t * .09]; }
             else {
               const t = fbm(x / 6, z / 6, graine + 77, 2);
               col = [herbe[0] + t * .1, herbe[1] + t * .14, herbe[2] + t * .06];
@@ -5385,15 +5432,113 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
 
 </script>
 <script>
+/* ==== corps.js ==== */
+/* CHAIR À CANON — les corps, repris d'EMPRISE (human-data.js, body-data.js, human.js, people.js) :
+   anatomie procédurale paramétrique, vêtements à deux os continus, jambes en IK (jambe d'appui tendue,
+   jambe libre qui se lève), bras qui ballent au pas et se tendent en visée. La démarche s'avance à partir
+   de la distance réellement parcourue — un homme arrêté ne marche pas parce que l'IA le veut.
+   Les formes sont enregistrées chez FRender (cube unité) ; l'assemblage rend des primitives dynamiques,
+   comme la foule d'EMPRISE. */
+(function (G) {
+  'use strict';
+  const B = G.CAC = G.CAC || {};
+  if (typeof G.document === 'undefined' || typeof G.FRender === 'undefined') { B.corps = null; return; }
+
+  const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+  // ————— anatomie procédurale (human-data.js, verbatim) —————
+  const mesh = () => ({ positions: [], normals: [], indices: [], bones: [], materials: [] });
+  function vertex(m, p, bone = [0, 0, 0], material = 0) { const i = m.positions.length; m.positions.push(p); m.normals.push([0, 0, 0]); m.bones.push(bone); m.materials.push(material); return i; }
+  function normalise(m) { for (const n of m.normals) n.fill(0); for (let i = 0; i < m.indices.length; i += 3) { const ids = m.indices.slice(i, i + 3), [a, b, c] = ids.map(j => m.positions[j]), u = b.map((n, k) => n - a[k]), v = c.map((n, k) => n - a[k]), n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]; for (const j of ids) for (let k = 0; k < 3; k++) m.normals[j][k] += n[k]; } for (let i = 0; i < m.normals.length; i++) { const n = m.normals[i], l = Math.hypot(...n); m.normals[i] = l > 1e-10 ? n.map(v => v / l) : [0, 1, 0]; } m.count = m.positions.length; return m; }
+  function profile(y, rows) { if (y <= rows[0][0]) return rows[0].slice(1); let i = 1; while (i < rows.length - 1 && y > rows[i][0]) i++; const a = rows[i - 1], b = rows[i], h = b[0] - a[0], t = clamp((y - a[0]) / h), slope = (j, k) => { if (j === 0) return (rows[1][k] - rows[0][k]) / (rows[1][0] - rows[0][0]); if (j === rows.length - 1) return (rows[j][k] - rows[j - 1][k]) / (rows[j][0] - rows[j - 1][0]); const h0 = rows[j][0] - rows[j - 1][0], h1 = rows[j + 1][0] - rows[j][0], d0 = (rows[j][k] - rows[j - 1][k]) / h0, d1 = (rows[j + 1][k] - rows[j][k]) / h1; if (d0 * d1 <= 0) return 0; return 3 * (h0 + h1) / ((2 * h1 + h0) / d0 + (h1 + 2 * h0) / d1); }; return a.slice(1).map((v, k) => { k++; const n = (2 * t * t * t - 3 * t * t + 1) * v + (t * t * t - 2 * t * t + t) * h * slope(i - 1, k) + (-2 * t * t * t + 3 * t * t) * b[k] + (t * t * t - t * t) * h * slope(i, k); return clamp(n, Math.min(v, b[k]), Math.max(v, b[k])); }); }
+  function surface(m, { bottom, top, rows = 24, sides = 28, point, bones = () => [0, 0, 0], material = 0, cap = true }) { const start = m.positions.length; for (let j = 0; j <= rows; j++) { const y = bottom + (top - bottom) * j / rows; for (let i = 0; i < sides; i++) { const angle = i * Math.PI * 2 / sides; vertex(m, point(y, angle), bones(y, angle), material); } } for (let j = 0; j < rows; j++) for (let i = 0; i < sides; i++) { const a = start + j * sides + i, b = a + sides, c = start + j * sides + (i + 1) % sides, d = c + sides; m.indices.push(a, b, c, c, b, d); } if (cap) for (const [j, flip] of [[0, true], [rows, false]]) { const y = bottom + (top - bottom) * j / rows, p = [0, 0, 0]; for (let i = 0; i < sides; i++) for (let k = 0; k < 3; k++) p[k] += m.positions[start + j * sides + i][k] / sides; const center = vertex(m, p, bones(y), material); for (let i = 0; i < sides; i++) { const a = start + j * sides + i, b = start + j * sides + (i + 1) % sides; m.indices.push(center, ...(flip ? [a, b] : [b, a])); } } }
+  function ellipsoid(m, center, radii, { bone = [1, 1, 0], material = 0, rows = 10, sides = 16, tilt = 0 } = {}) { const start = m.positions.length, ct = Math.cos(tilt), st = Math.sin(tilt); for (let j = 0; j <= rows; j++) for (let i = 0; i < sides; i++) { const v = j * Math.PI / rows, u = i * Math.PI * 2 / sides, x = radii[0] * Math.sin(v) * Math.cos(u), y = radii[1] * Math.cos(v), z = radii[2] * Math.sin(v) * Math.sin(u); vertex(m, [center[0] + ct * x - st * y, center[1] + st * x + ct * y, center[2] + z], bone, material); } for (let j = 0; j < rows; j++) for (let i = 0; i < sides; i++) { const a = start + j * sides + i, b = a + sides, c = start + j * sides + (i + 1) % sides, d = c + sides; if (j > 0) m.indices.push(a, d, b); if (j < rows - 1) m.indices.push(a, c, d); } }
+
+  function head() { const m = mesh(), shape = [[1.525, .028, .028, .018], [1.55, .057, .049, .026], [1.585, .079, .066, .021], [1.625, .091, .080, .008], [1.67, .095, .086, .0], [1.71, .093, .083, -.002], [1.75, .092, .078, -.007], [1.79, .080, .067, -.012], [1.815, .055, .047, -.015], [1.827, .006, .006, -.015]], g = (x, y, cx, cy, sx, sy) => Math.exp(-(((x - cx) / sx) ** 2 + ((y - cy) / sy) ** 2));
+    surface(m, { bottom: 1.525, top: 1.827, rows: 32, sides: 40, bones: () => [1, 1, 0], point(y, a) { const [rx, rz, cz] = profile(y, shape), x = rx * Math.cos(a), front = Math.max(0, Math.sin(a)) ** 6; let z = cz + rz * Math.sin(a); z += front * (.023 * g(x, y, 0, 1.669, .022, .030) + .010 * g(x, y, 0, 1.703, .015, .042) + .008 * g(x, y, -.054, 1.660, .026, .023) + .008 * g(x, y, .054, 1.660, .026, .023) - .010 * g(x, y, -.038, 1.703, .021, .013) - .010 * g(x, y, .038, 1.703, .021, .013) + .009 * g(x, y, 0, 1.611, .036, .008) - .003 * g(x, y, 0, 1.617, .040, .003)); return [x, y, z]; } });
+    for (const side of [-1, 1]) ellipsoid(m, [side * .097, 1.669, -.008], [.014, .034, .020]);
+    surface(m, { bottom: 1.465, top: 1.555, rows: 8, sides: 24, bones: () => [1, 1, 0], point(y, a) { const rx = .053 + smooth(1.51, 1.555, y) * .009; return [rx * Math.cos(a), y, .004 + .050 * Math.sin(a)]; } });
+    return normalise(m);
+  }
+  const humanData = head();
+
+  // ————— corps habillé (body-data.js, verbatim) —————
+  const G1 = { mesh, vertex, normalise, profile, surface, ellipsoid, smooth, clamp };
+  const m = G1.mesh();
+  const { surface: sf, ellipsoid: el, profile: pf, smooth: sm, clamp: cl } = G1;
+  const shirt = [[1.035, .195, .140], [1.11, .197, .145], [1.24, .207, .150], [1.36, .219, .143], [1.43, .216, .122], [1.475, .150, .088], [1.495, .077, .066], [1.512, .070, .064], [1.532, .067, .061]];
+  sf(m, { bottom: 1.035, top: 1.532, rows: 26, sides: 28, material: 1, point(y, a) { const [rx, rz] = pf(y, shirt), fold = .0015 * Math.sin(y * 58 + a * 3) * Math.sin(a * 5); return [(rx + fold) * Math.cos(a), y - .018 * sm(1.475, 1.532, y) * Math.max(0, Math.sin(a)) ** 2, (rz + fold) * Math.sin(a)]; } });
+  sf(m, { bottom: .87, top: 1.035, rows: 10, sides: 28, material: 2, point(y, a) { const [rx, rz] = pf(y, [[.87, .158, .108], [.95, .185, .127], [1.035, .195, .140]]); return [rx * Math.cos(a), y, rz * Math.sin(a)]; } });
+  for (const side of [-1, 1]) {
+    const upper = side > 0 ? 3 : 2, fore = side > 0 ? 19 : 18, thigh = side > 0 ? 5 : 4, shin = side > 0 ? 17 : 16, foot = side > 0 ? 21 : 20;
+    sf(m, { bottom: .955, top: 1.485, rows: 30, sides: 18, material: 1, bones(y) { if (y > 1.40) return [upper, 0, sm(1.40, 1.485, y) * .95]; return [upper, fore, 1 - sm(1.135, 1.245, y)]; }, point(y, a) { const [rx, rz] = pf(y, [[.955, .045, .049], [1.04, .053, .058], [1.12, .058, .063], [1.19, .057, .062], [1.30, .069, .076], [1.40, .070, .076], [1.43, .061, .068], [1.465, .036, .043], [1.485, .012, .018]]), t = cl((1.43 - y) / .24), lower = cl((1.19 - y) / .24), cx = side * (y > 1.43 ? .235 - .085 * sm(1.43, 1.485, y) : y < 1.19 ? .255 + .005 * lower : .235 + .020 * t), cz = .015 * lower, fold = .0012 * Math.sin(y * 65 + a * 3); return [cx + (rx + fold) * Math.cos(a), y - .026 * sm(1.27, 1.43, y) * Math.max(0, side * Math.cos(a)) ** 2, cz + (rz + fold) * Math.sin(a)]; } });
+    el(m, [side * .26, .910, .015], [.042, .057, .024], { bone: [fore, fore, 0], rows: 10, sides: 16 });
+    const lengths = [.045, .057, .054, .043], offsets = [-.027, -.009, .010, .027];
+    for (let f = 0; f < 4; f++) el(m, [side * (.26 + offsets[f]), .861 - lengths[f] / 2, .018], [.0095, lengths[f] / 2 + .009, .0105], { bone: [fore, fore, 0], rows: 7, sides: 8 });
+    el(m, [side * .216, .900, .026], [.012, .030, .014], { bone: [fore, fore, 0], tilt: side * .42, rows: 10, sides: 12 });
+    sf(m, { bottom: .145, top: 1.0, rows: 32, sides: 20, material: 2, bones(y) { if (y > .88) return [thigh, 0, sm(.88, 1.0, y) * .7]; return [thigh, shin, 1 - sm(.465, .575, y)]; }, point(y, a) { const [rx, rz] = pf(y, [[.145, .058, .065], [.29, .072, .082], [.45, .078, .086], [.54, .080, .088], [.72, .096, .107], [.88, .103, .115], [1.0, .102, .119]]), fold = .0014 * Math.sin(y * 52 + a * 4); return [side * .105 + (rx + fold) * Math.cos(a), y, (rz + fold) * Math.sin(a)]; } });
+    sf(m, { bottom: .005, top: .145, rows: 12, sides: 20, material: 4, bones: () => [foot, foot, 0], point(y, a) { const [rx, rz, cz] = pf(y, [[.005, .052, .110, .027], [.020, .059, .126, .035], [.052, .060, .124, .032], [.088, .055, .105, .023], [.115, .047, .071, .010], [.145, .041, .052, 0]]); return [side * .105 + rx * Math.cos(a) * (1 - .08 * Math.max(0, Math.sin(a))), y, cz + rz * Math.sin(a)]; } });
+  }
+  const bodyData = G1.normalise(m); bodyData.feet = true;
+
+  // ————— repères matriciels (BITUME carene/voiture, mêmes formules) —————
+  function boite(triangles) { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const t of triangles) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], t[k][0], t[k][1], t[k][2]); hi[k] = Math.max(hi[k], t[k][0], t[k][1], t[k][2]); } return { lo, hi }; }
+  const unitaire = q => { const l = Math.hypot(...q) || 1; return q.map(v => v / l); };
+  function normaliser(triangles) { const { lo, hi } = boite(triangles), centre = [0, 1, 2].map(k => (lo[k] + hi[k]) / 2), taille = [0, 1, 2].map(k => Math.max(1e-4, hi[k] - lo[k])); const p = q => [0, 1, 2].map(k => (q[k] - centre[k]) / taille[k]), n = q => unitaire([0, 1, 2].map(k => q[k] * taille[k])); return { triangles: triangles.map(t => [p(t[0]), p(t[1]), p(t[2]), n(t[3]), n(t[4]), n(t[5])]), centre, taille }; }
+  function euler(rx, ry, rz) { const cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry), cz = Math.cos(rz), sz = Math.sin(rz); return [[cz * cy, sz * cy, -sy], [cz * sy * sx - sz * cx, sz * sy * sx + cz * cx, cy * sx], [cz * sy * cx + sz * sx, sz * sy * cx - cz * sx, cy * cx]]; }
+  const mulv = (m, v) => [m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2], m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2], m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2]];
+  const mulM = (a, b) => [mulv(a, b[0]), mulv(a, b[1]), mulv(a, b[2])];
+  function angles(m) { const b = -Math.asin(Math.max(-1, Math.min(1, m[0][2]))); return [Math.atan2(m[1][2], m[2][2]), b, Math.atan2(m[0][1], m[0][0])]; }
+
+  function register(data, nom) { const triangles = []; for (let i = 0; i < data.indices.length; i += 3) { const ids = [data.indices[i], data.indices[i + 2], data.indices[i + 1]], point = j => [data.positions[j][0], data.positions[j][1], -data.positions[j][2]], normal = j => [data.normals[j][0], data.normals[j][1], -data.normals[j][2]]; triangles.push([...ids.map(point), ...ids.map(normal)]); } const n = normaliser(triangles); G.FRender.forme(nom, n.triangles); return { shape: nom, p: n.centre, s: n.taille }; }
+
+  // ————— la tête et le corps découpés par os et matière (human.js) —————
+  const tete = register(humanData, 'cac-tete');
+  const bd = bodyData, body = { positions: bd.positions, normals: bd.normals, bones: bd.bones, materials: bd.materials, indices: bd.indices };
+  const groups = new Map();
+  for (let i = 0; i < body.indices.length; i += 3) {
+    const ids = body.indices.slice(i, i + 3), vote = new Map(), mat = new Map();
+    for (const j of ids) { const [a, b, w] = body.bones[j]; vote.set(a, (vote.get(a) || 0) + 1 - w); vote.set(b, (vote.get(b) || 0) + w); mat.set(body.materials[j], (mat.get(body.materials[j]) || 0) + 1); }
+    const code = [...vote].sort((a, b) => b[1] - a[1])[0][0], material = [...mat].sort((a, b) => b[1] - a[1])[0][0], key = code + ',' + material;
+    if (!groups.has(key)) groups.set(key, { code, material, indices: [] });
+    groups.get(key).indices.push(...ids);
+  }
+  const parts = [];
+  for (const [key, part] of groups) parts.push({ ...register({ ...body, indices: part.indices }, 'cac-corps-' + key), code: part.code, material: part.material });
+
+  // ————— la démarche (human.js legGait/motion, people.js advanceGait, verbatim) —————
+  const gaitParameters = Object.freeze({ duty: .52, stride: .30, lift: .09, drop: .072, thigh: .45, shin: .375, ankleY: .145, cycleDistance: 1.2 / 1.04 });
+  function legGait(phase, amount = 1) { amount = Math.max(0, Math.min(1.2, amount)); const q = gaitParameters, u = ((phase / (Math.PI * 2)) % 1 + 1) % 1, s = u < q.duty ? 0 : (u - q.duty) / (1 - q.duty), swing = u >= q.duty, t = s * s * (3 - 2 * s), z = q.stride * amount * (swing ? -1 + 2 * t : 1 - 2 * u / q.duty), lift = swing ? q.lift * amount * Math.sin(Math.PI * s) ** 2 : 0, bodyY = -q.drop * amount + .003 * amount * Math.cos(phase * 2), dy = .97 + bodyY - q.ankleY - lift, d = Math.max(.05, Math.min(q.thigh + q.shin - .00001, Math.hypot(dy, z))), knee = -Math.acos(Math.max(-1, Math.min(1, (d * d - q.thigh * q.thigh - q.shin * q.shin) / (2 * q.thigh * q.shin)))), hip = Math.atan2(z, dy) + Math.acos(Math.max(-1, Math.min(1, (q.thigh * q.thigh + d * d - q.shin * q.shin) / (2 * q.thigh * d)))), ankle = -hip - knee; return { hip, knee, ankle, bodyY, lift, z, stance: !swing }; }
+  function motion({ phase = 0, walk = 0, aim = false } = {}) { const left = legGait(phase, walk), right = legGait(phase + Math.PI, walk), swing = Math.sin(phase) * .23 * walk; return { left, right, bodyY: left.bodyY, armLeft: aim ? 1.20 : -swing, armRight: aim ? 1.20 : swing, elbow: aim ? .35 : .12, matrices: [] }; }
+  function boneMatrix(code, pose) { if (pose.matrices[code]) return pose.matrices[code]; const left = [2, 18, 4, 16, 20].includes(code), leg = left ? pose.left : pose.right; let c = 1, s = 0, ty = 0, tz = 0, angle = 0;
+    const turn = (a, y, z = 0) => { const ca = Math.cos(a), sa = Math.sin(a), nc = ca * c - sa * s, ns = ca * s + sa * c, ny = ca * ty + sa * tz + y * (1 - ca) - sa * z, nz = -sa * ty + ca * tz + z * (1 - ca) + sa * y; c = nc; s = ns; ty = ny; tz = nz; angle += a; };
+    if ([4, 5, 16, 17, 20, 21].includes(code)) { if (code >= 20) turn(leg.ankle, .145); if (code >= 16) turn(leg.knee, .52); turn(leg.hip, .97); } else if ([2, 3, 18, 19].includes(code)) { if (code >= 18) turn(pose.elbow, 1.19); turn(left ? pose.armLeft : pose.armRight, 1.43); }
+    return pose.matrices[code] = [c, s, ty, tz, angle];
+  }
+  function transformPoint(p, code, pose) { const [c, s, ty, tz] = boneMatrix(code, pose); return [p[0], c * p[1] + s * p[2] + ty, -s * p[1] + c * p[2] + tz]; }
+  function advanceGait(state, travel, speed, dt) {
+    const target = Math.min(1.2, Math.max(0, speed) / (speed > 2 ? 2.53846 : 1.26923));
+    const previous = state.amount || 0; state.amount = previous + (target - previous) * (1 - Math.exp(-Math.max(0, dt) / .12));
+    if (state.amount < .001) state.amount = 0;
+    state.phase = (state.phase || 0) + Math.min(.5, Math.max(0, travel)) / (1.2 / 1.04 * Math.max(.15, target, (previous + state.amount) / 2)) * Math.PI * 2;
+    return state;
+  }
+
+  B.corps = { parts, tete, motion, boneMatrix, transformPoint, advanceGait, normaliser, euler, mulM, angles, bodyData, humanData, gaitParameters };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
 /* ==== troupe.js ==== */
-/* CHAIR À CANON — la troupe : l'homme assemblé en primitives FERRO (boîtes et sphères), sa marche,
-   sa visée, sa chute. Chaque unité est un objet d'état ; mailler() rend les instances dynamiques de
-   l'image courante. Une balle tue ; la grenade blesse. */
+/* CHAIR À CANON — la troupe : l'homme d'EMPRISE (corps procédural à deux os, jambes en IK, démarche
+   avancée par la distance parcourue), son uniforme, son casque, son fusil ; sa marche, sa visée, sa chute.
+   Sans le moteur (tests Node), l'homme retombe sur ses boîtes. */
 (function (G) {
   'use strict';
   const B = G.CAC = G.CAC || {};
 
-  const EQUIPE = [0.13, 0.14, 0.16], PEAU = [0.80, 0.60, 0.45];
+  const EQUIPE = [0.13, 0.14, 0.16], PEAU = [0.80, 0.60, 0.45], SOMBRE = [0.055, 0.07, 0.08];
   const CAMPS = {
     bleu: { torse: [0.20, 0.36, 0.78], casque: [0.12, 0.22, 0.48], jambieres: [0.14, 0.20, 0.38] },
     rouge: { torse: [0.70, 0.20, 0.13], casque: [0.44, 0.11, 0.09], jambieres: [0.34, 0.12, 0.10] }
@@ -5401,11 +5546,13 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
 
   let prochain = 1;
   function creer(o) {
+    const id = prochain++;
     return {
-      id: prochain++, camp: o.camp, arme: o.arme || 'mg',
+      id, camp: o.camp, arme: o.arme || 'mg',
       x: o.x, z: o.z, dir: o.dir === undefined ? 0 : o.dir, dirTir: o.dir === undefined ? 0 : o.dir,
       cible: null, cibleTir: null, tirOuvert: false,
       etat: 'garde', vie: 100, vitesse: o.vitesse || 2.1, phase: Math.random() * 6.28,
+      allure: { phase: (id * 0.618) % 6.283, amount: 0 },
       groupe: o.groupe === undefined ? 0 : o.groupe, selectionne: false,
       grenades: o.grenades || 0, roquettes: o.roquettes || 0,
       cooldown: 0, rafale: 0, rafaleD: 0,
@@ -5414,59 +5561,87 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
     };
   }
 
-  // Le corps de l'homme, en instances dynamiques. t : horloge pour le balancement debout.
+  // L'homme d'EMPRISE assemblé : os → matrice → primitive. Couche par os et matière, comme la foule.
   function mailler(u, relief, t, sortie, cadavres) {
     const y = relief.hauteur(u.x, u.z) + (u.alt || 0);
     const C = CAMPS[u.camp];
+    if (u.etat === 'mort' && !cadavres) return;
+    if (!B.corps) { maillerBoites(u, y, t, sortie, C); if (u.selectionne && u.etat !== 'mort') anneau(u, y, sortie); return; }
+    const K = B.corps;
+    const allure = u.allure || { phase: 0, amount: 0 };
+    const visee = u.etat !== 'mort' && (u.tirOuvert || u.cibleTir);
+    const couche = u.etat === 'mort';
+    const pose = K.motion({ phase: allure.phase, walk: couche ? 0 : allure.amount, aim: !!visee });
+    const yaw = visee ? u.dirTir : u.dir, c = Math.cos(yaw), s = Math.sin(yaw);
+    const lean = couche ? Math.PI / 2 : 0;
+    const Mbase = K.mulM(K.euler(0, -yaw, 0), K.euler(lean, 0, 0));
+    const point = p => couche
+      ? [u.x + p[0] * c - (.98 - p[1]) * s, y + .25 - p[2], u.z + p[0] * s + (.98 - p[1]) * c]
+      : [u.x + p[0] * c - p[2] * s, y + p[1] + (pose.bodyY || 0), u.z + p[0] * s + p[2] * c];
+    const add = (shape, p, size, color, rot = [0, 0, 0], mat = 1) => sortie.push({
+      shape, p: point(p), s: size, r: K.angles(K.mulM(Mbase, K.euler(...rot))), mat, color
+    });
+    const teinte = couche ? .55 : 1;
+    const couleur = matiere => matiere === 0 ? PEAU.map(v => v * teinte)
+      : matiere === 1 ? C.torse.map(v => v * teinte)
+        : matiere === 2 ? C.jambieres.map(v => v * teinte)
+          : SOMBRE;
+    for (const part of K.parts) {
+      if (part.code === 1) continue;
+      const q = K.transformPoint([part.p[0], part.p[1], -part.p[2]], part.code, pose);
+      add(part.shape, [q[0], q[1], -q[2]], part.s, couleur(part.material), [K.boneMatrix(part.code, pose)[4], 0, 0]);
+    }
+    // la tête et son casque, le sac, le fusil
+    add('sphere', [0, 1.68, 0], [.30, .34, .30], PEAU.map(v => v * teinte));
+    add('sphere', [0, 1.785, .008], [.25, .17, .25], C.casque.map(v => v * teinte));
+    add('box', [0, 1.735, -.155], [.22, .055, .07], C.casque.map(v => v * .8 * teinte));
+    add('box', [0, 1.25, .17], [.30, .38, .14], EQUIPE);
+    const gp = visee ? [.09, 1.26, -.50] : [.27, .92, -.08];
+    add('box', gp, [.10, .13, .38], SOMBRE, visee ? [0, 0, 0] : [.75, 0, 0], 7);
+    add('cylinder', [gp[0], gp[1] + .035, gp[2] - .27], [.032, .22, .032], [.14, .16, .17], [Math.PI / 2, 0, 0], 7);
+    if (u.arme === 'bazooka' && !couche) add('cylinder', [.16, 1.38, -.18], [.14, .9, .14], [.2, .22, .2], [Math.PI / 2 - .25, 0, 0], 7);
+    if (u.selectionne && !couche) anneau(u, y, sortie);
+  }
+
+  function anneau(u, y, sortie) {
+    sortie.push({ shape: 'ring', p: [u.x, y + .05, u.z], s: [1.15, .02, 1.15], mat: 4, color: [1, .85, .35], alpha: .85, overlay: true, fx: true });
+  }
+
+  // Le secours sans moteur : l'homme en boîtes (tests Node).
+  function maillerBoites(u, y, t, sortie, C) {
     if (u.etat === 'mort') {
-      if (cadavres) {
-        const f = Math.min(1, (t - u.mortA) * 2.2);
-        const couche = [u.x, y + .18 - .06 * f, u.z];
-        const r = [0, u.dir, -1.45 * f];
-        sortie.push({ shape: 'box', p: couche, s: [.36, .5, .24], r, mat: 1, color: C.torse.map(v => v * .7) });
-        sortie.push({ shape: 'sphere', p: [couche[0] + Math.sin(u.dir) * .34, y + .12, couche[2] + Math.cos(u.dir) * .34], s: [.22, .2, .22], mat: 1, color: PEAU.map(v => v * .5) });
-      }
+      const f = Math.min(1, (t - u.mortA) * 2.2);
+      sortie.push({ shape: 'box', p: [u.x, y + .18 - .06 * f, u.z], s: [.36, .5, .24], r: [0, u.dir, -1.45 * f], mat: 1, color: C.torse.map(v => v * .7) });
       return;
     }
     const marche = u.cible && Math.hypot(u.cible.x - u.x, u.cible.z - u.z) > .3;
     const pas = marche ? Math.sin(u.phase) : Math.sin(t * 1.7 + u.id) * .12;
-    const cy = y + .78, epaule = y + 1.18;
-    const dy = u.dir, dyt = u.dirTir;
+    const cy = y + .78, epaule = y + 1.18, dy = u.dir, dyt = u.dirTir;
     const cos = Math.cos(dy), sin = Math.sin(dy);
-    // jambes
-    sortie.push({ shape: 'box', p: [u.x - cos * .0 - sin * .1, y + .32, u.z + .1 * cos], s: [.14, .62, .14], r: [pas * .9, dy, 0], mat: 1, color: C.jambieres });
-    sortie.push({ shape: 'box', p: [u.x + sin * .1, y + .32, u.z - .1 * cos], s: [.14, .62, .14], r: [-pas * .9, dy, 0], mat: 1, color: C.jambieres });
-    // torse, sac, tête, casque
+    sortie.push({ shape: 'box', p: [u.x, y + .32, u.z + .1 * cos], s: [.14, .62, .14], r: [pas * .9, dy, 0], mat: 1, color: C.jambieres });
+    sortie.push({ shape: 'box', p: [u.x, y + .32, u.z - .1 * cos], s: [.14, .62, .14], r: [-pas * .9, dy, 0], mat: 1, color: C.jambieres });
     sortie.push({ shape: 'box', p: [u.x, cy, u.z], s: [.36, .5, .24], r: [0, dy, 0], mat: 1, color: C.torse });
-    sortie.push({ shape: 'box', p: [u.x - sin * .17, cy, u.z + cos * .17], s: [.24, .34, .12], r: [0, dy, 0], mat: 7, color: EQUIPE });
     sortie.push({ shape: 'sphere', p: [u.x, y + 1.42, u.z], s: [.21, .21, .21], mat: 1, color: PEAU });
     sortie.push({ shape: 'sphere', p: [u.x, y + 1.48, u.z], s: [.26, .19, .26], mat: 1, color: C.casque });
-    // bras avant + fusil, orientés vers la visée ; bras arrière
-    const pitch = u.pitch || 0;
-    sortie.push({ shape: 'box', p: [u.x + Math.sin(dyt) * .26, epaule - .06 - pitch * .1, u.z + Math.cos(dyt) * .26], s: [.1, .34, .1], r: [-.9 - pitch, dyt, 0], mat: 1, color: C.torse });
-    sortie.push({ shape: 'box', p: [u.x + Math.sin(dyt) * .42, epaule - .18 - pitch * .16, u.z + Math.cos(dyt) * .42], s: [.06, .74, .06], r: [Math.PI / 2 - .12 - pitch, dyt, 0], mat: 7, color: [0.16, 0.16, 0.18] });
-    sortie.push({ shape: 'box', p: [u.x - sin * .2, epaule - .1, u.z + cos * .2], s: [.1, .32, .1], r: [.35 - pas * .5, dy, 0], mat: 1, color: C.torse });
-    if (u.arme === 'bazooka') sortie.push({ shape: 'cylinder', p: [u.x + Math.sin(dyt) * .3, epaule - .02, u.z + Math.cos(dyt) * .3], s: [.14, .9, .14], r: [Math.PI / 2 - pitch, dyt, 0], mat: 7, color: [0.2, 0.22, 0.2] });
-    if (u.selectionne) {
-      sortie.push({ shape: 'ring', p: [u.x, y + .05, u.z], s: [1.15, .02, 1.15], mat: 4, color: [1, .85, .35], alpha: .85, overlay: true, fx: true });
-    }
+    sortie.push({ shape: 'box', p: [u.x + Math.sin(dyt) * .42, epaule - .18, u.z + Math.cos(dyt) * .42], s: [.06, .74, .06], r: [Math.PI / 2 - .12, dyt, 0], mat: 7, color: [0.16, 0.16, 0.18] });
   }
 
   // Avancer vers la cible avec évitement des obstacles et séparation des camarades.
   function avancer(u, relief, camarades, dt) {
-    if (!u.cible || u.etat === 'mort') return false;
+    if (!u.cible || u.etat === 'mort') { B.corps && B.corps.advanceGait(u.allure, 0, 0, dt); return false; }
+    const ox = u.x, oz = u.z;
     const dx = u.cible.x - u.x, dz = u.cible.z - u.z, d = Math.hypot(dx, dz);
-    if (d < .38) { u.cible = null; return false; }
+    if (d < .38) { u.cible = null; B.corps && B.corps.advanceGait(u.allure, 0, 0, dt); return false; }
     let vx = dx / d, vz = dz / d;
     for (const o of relief.obstacles) {
       if (!o.bloqueMarche) continue;
-      const ox = u.x - o.x, oz = u.z - o.z, dd = Math.hypot(ox, oz), rr = o.r + .42;
-      if (dd < rr && dd > 1e-4) { const p = (rr - dd) / rr * 1.9; vx += ox / dd * p; vz += oz / dd * p; }
+      const ox2 = u.x - o.x, oz2 = u.z - o.z, dd = Math.hypot(ox2, oz2), rr = o.r + .42;
+      if (dd < rr && dd > 1e-4) { const p = (rr - dd) / rr * 1.9; vx += ox2 / dd * p; vz += oz2 / dd * p; }
     }
     for (const c of (camarades || [])) {
       if (c === u || c.etat === 'mort') continue;
-      const ox = u.x - c.x, oz = u.z - c.z, dd = Math.hypot(ox, oz);
-      if (dd < .85 && dd > 1e-4) { const p = (.85 - dd) / dd * .9; vx += ox * p; vz += oz * p; }
+      const ox2 = u.x - c.x, oz2 = u.z - c.z, dd = Math.hypot(ox2, oz2);
+      if (dd < .85 && dd > 1e-4) { const p = (.85 - dd) / dd * .9; vx += ox2 * p; vz += oz2 * p; }
     }
     const l = Math.hypot(vx, vz) || 1; vx /= l; vz /= l;
     const nx = u.x + vx * u.vitesse * dt, nz = u.z + vz * u.vitesse * dt;
@@ -5478,7 +5653,6 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       }
       if (!coince) { u.x = nx; u.z = nz; }
       else {
-        // glissement le long de la tangente
         const tx = -vz, tz = vx;
         for (const s of [1, -1]) {
           const gx = u.x + (vx * .35 + tx * s * .9) * u.vitesse * dt, gz = u.z + (vz * .35 + tz * s * .9) * u.vitesse * dt;
@@ -5489,11 +5663,14 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       }
     }
     u.dir = Math.atan2(vx, vz);
+    const moved = Math.hypot(u.x - ox, u.z - oz);
+    B.corps && B.corps.advanceGait(u.allure, moved, moved / Math.max(dt, 1e-4), dt);
     return true;
   }
 
   function tuer(u, t) {
     u.etat = 'mort'; u.mortA = t; u.cible = null; u.cibleTir = null; u.selectionne = false; u.tu = true;
+    u.allure && (u.allure.amount = 0);
   }
 
   B.troupe = { creer, mailler, avancer, tuer, CAMPS, PEAU, EQUIPE };
@@ -5987,73 +6164,206 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
 </script>
 <script>
 /* ==== vue.js ==== */
-/* CHAIR À CANON — la vue : une caméra isométrique (lacet fixe à 45°, assiette 35°, champ étroit) qui
-   cadre l'île comme l'original cadrait ses collines. Elle dérive vers la cible, zoome à la molette, se
-   déplace au clavier, aux bords de l'écran ou à la minicarte — et sait dire ce que le curseur désigne. */
+/* CHAIR À CANON — la vue, reprise de la caméra RTS de Point de rupture : une visée au sol que la caméra
+   rejoint sans à-coups (l'amortisseur critique de FERRO, motion.js damp), la carte saisie à la main (le point
+   du sol sous le curseur reste sous le curseur), le zoom vers le curseur, la rotation autour de la visée, et
+   l'emprise du soleil (camera.sun) pour que l'ombre ne tienne que sur ce que l'on voit. Le lacet reste fixé
+   à 45° par défaut — l'île est toujours posée comme dans l'original — mais Q/E et le glissement Shift le
+   laissent tourner. */
 (function (G) {
   'use strict';
   const B = G.CAC = G.CAC || {};
 
-  const YAW = Math.PI / 4, PITCH = -35 * Math.PI / 180, FOV = 26;
+  const DMIN = 16, DMAX = 74, FOV = 26;
+  const TAN = Math.tan(FOV * Math.PI / 360);
+  const YAW0 = Math.PI / 4;
+  const borner = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
-  function creer(canvas) {
-    return {
-      x: 48, z: 48, alt: 0, dist: 34, yaw: YAW, pitch: PITCH, fov: FOV,
-      near: .5, far: 320, cibleX: 48, cibleZ: 48,
-      canvas, bord: { n: false, s: false, e: false, o: false }, secousse: 0
-    };
+  /** Amortisseur critique de FERRO (motion.js, damp), à la même formule. */
+  function amortir(q, cible, omega, dt) {
+    const x = q.x - cible, e = Math.exp(-omega * dt), t = (q.v + omega * x) * dt;
+    q.x = cible + (x + t) * e; q.v = (q.v - omega * t) * e;
+    return q.x;
   }
+  const canal = x => ({ x, v: 0 });
+  const angle = a => Math.atan2(Math.sin(a), Math.cos(a));
 
-  function maj(cam, dt) {
-    const v = 26 * (cam.dist / 34);
-    if (cam.bord.o) cam.cibleX -= v * dt;
-    if (cam.bord.e) cam.cibleX += v * dt;
-    if (cam.bord.n) cam.cibleZ -= v * dt;
-    if (cam.bord.s) cam.cibleZ += v * dt;
-    const t = cam.canvas ? cam.canvas.clientWidth : 96, h = cam.canvas ? cam.canvas.clientHeight : 96;
-    cam.cibleX = Math.max(2, Math.min(t - 2, cam.cibleX));
-    cam.cibleZ = Math.max(2, Math.min(h - 2, cam.cibleZ));
-    const k = 1 - Math.exp(-7 * dt);
-    cam.x += (cam.cibleX - cam.x) * k;
-    cam.z += (cam.cibleZ - cam.z) * k;
-    cam.secousse = Math.max(0, cam.secousse - dt * 2.4);
-  }
-
-  // La position caméra attendue par le moteur : pos = cible − avant × distance.
-  function camera3d(cam, relief) {
-    const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
-    const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
-    const avant = [sy * cp, sp, -cy * cp];
-    const alt = Math.max(relief ? relief.hauteur(cam.x, cam.z) + 6 : 4, cam.dist * Math.abs(sp) + 2);
-    return {
-      pos: [cam.x - avant[0] * cam.dist, alt, cam.z - avant[2] * cam.dist],
-      yaw: cam.yaw, pitch: cam.pitch, roll: 0, fov: cam.fov, near: cam.near, far: cam.far,
-      allStatic: true
-    };
-  }
-
-  // Les axes tels que le moteur les construit (cameraAxes), pour lancer le rayon du curseur.
-  function axes(cam) {
-    const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch), cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+  /** Axes du moteur (cameraAxes) : avant = [sin lacet · cos tangage, sin tangage, -cos lacet · cos tangage]. */
+  function axes(yaw, pitch) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     return { right: [cy, 0, sy], up: [-sy * sp, cp, cy * sp], forward: [sy * cp, sp, -cy * cp] };
   }
+  /** Plus on s'éloigne, plus on regarde à plomb : 34° près du sol, 52° tout en haut. */
+  const tangage = D => -(34 + 18 * Math.pow(borner((D - DMIN) / (DMAX - DMIN), 0, 1), 0.7)) * Math.PI / 180;
 
-  // Curseur → monde : rayon caméra, frappé contre les hommes, les obstacles et le sol.
-  function curseur(cam, relief, mx, my, unites) {
-    const c = cam.canvas, w = c.clientWidth || 1, h = c.clientHeight || 1;
-    const ndcX = (mx / w) * 2 - 1, ndcY = 1 - (my / h) * 2;
-    const a = axes(cam);
-    const tan = Math.tan(cam.fov * Math.PI / 360);
-    const aspect = w / h;
-    const c3 = camera3d(cam, relief);
-    let dx = a.forward[0] + a.right[0] * ndcX * tan * aspect + a.up[0] * ndcY * tan;
-    let dy = a.forward[1] + a.right[1] * ndcX * tan * aspect + a.up[1] * ndcY * tan;
-    let dz = a.forward[2] + a.right[2] * ndcX * tan * aspect + a.up[2] * ndcY * tan;
-    const l = Math.hypot(dx, dy, dz) || 1; dx /= l; dy /= l; dz /= l;
-    return relief.frapper(c3.pos[0], c3.pos[1], c3.pos[2], dx, dy, dz, unites);
+  function creer(canvas, relief) {
+    const vise = { x: 48, z: 48, D: 30, yaw: YAW0 };
+    const lis = { x: canal(48), z: canal(48), D: canal(30), yaw: canal(YAW0) };
+    const touches = new Set();
+    let vue = null;
+
+    // Repère du soleil, comme dans sunShadowPass : avant = -soleil, droite horizontale, haut = droite × avant.
+    const s = [.42, .78, .31]; s[1] = Math.max(0.12, s[1]);
+    const ls = Math.hypot(...s), fw = s.map(v => -v / ls), lh = Math.hypot(fw[0], fw[2]);
+    const sr = [-fw[2] / lh, 0, fw[0] / lh];
+    const su = [sr[1] * fw[2] - sr[2] * fw[1], sr[2] * fw[0] - sr[0] * fw[2], sr[0] * fw[1] - sr[1] * fw[0]];
+
+    const aspect = () => (canvas && canvas.clientWidth ? canvas.clientWidth : 800) / (canvas && canvas.clientHeight ? canvas.clientHeight : 600);
+    const solY = (x, z) => (relief ? Math.max(relief.hauteur(x, z), relief.eau) : 0);
+
+    function camera(x, z, D, yaw) {
+      const pitch = tangage(D), a = axes(yaw, pitch), f = a.forward;
+      let pos = [x - f[0] * D, -f[1] * D, z - f[2] * D];
+      // l'œil ne se noie ni dans la mer ni dans une colline
+      const garde = solY(pos[0], pos[2]) + 3;
+      if (pos[1] < garde) pos[1] = garde;
+      return { pos, yaw, pitch, roll: 0, fov: FOV, near: Math.max(.5, D * .02), far: D * 4 + 200, allStatic: true, axes: a, D, cible: [x, z] };
+    }
+    /** Rayon de l'écran pour un pixel CSS, caméra donnée. */
+    function rayon(cam, px, py) {
+      const w = (canvas && canvas.clientWidth) || 800, h = (canvas && canvas.clientHeight) || 600;
+      const nx = (px / w) * 2 - 1, ny = 1 - (py / h) * 2, { right: r, up: u, forward: f } = cam.axes, k = aspect();
+      return [f[0] + (r[0] * nx * k + u[0] * ny) * TAN, f[1] + (r[1] * nx * k + u[1] * ny) * TAN, f[2] + (r[2] * nx * k + u[2] * ny) * TAN];
+    }
+    /** Point du sol (terrain ou mer) sous un pixel CSS, pour une caméra donnée. */
+    function sol(cam, px, py) {
+      const d = rayon(cam, px, py);
+      if (d[1] > -1e-4) return null;
+      const t = -cam.pos[1] / d[1];
+      const x = cam.pos[0] + d[0] * t, z = cam.pos[2] + d[2] * t;
+      return [x, z];
+    }
+    /** Emprise du soleil (camera.sun) : le carré du repère solaire qui couvre le sol visible. */
+    function emprise(cam) {
+      const w = (canvas && canvas.clientWidth) || 800, h = (canvas && canvas.clientHeight) || 600;
+      const coins = [[0, 0], [w, 0], [0, h], [w, h]].map(([a, b]) => sol(cam, a, b));
+      if (coins.some(c => !c)) return { center: [cam.cible[0], 0, cam.cible[1]], extent: cam.D * 1.5, depth: cam.D * 3.75 + 150 };
+      let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, gx = 0, gz = 0;
+      for (const c of coins) {
+        gx += c[0] / 4; gz += c[1] / 4;
+        for (const y of [0, 12]) {
+          const pr = c[0] * sr[0] + y * sr[1] + c[1] * sr[2], pu = c[0] * su[0] + y * su[1] + c[1] * su[2];
+          r0 = Math.min(r0, pr); r1 = Math.max(r1, pr); u0 = Math.min(u0, pu); u1 = Math.max(u1, pu);
+        }
+      }
+      const g = [gx, 0, gz], dr = (r0 + r1) / 2 - (g[0] * sr[0] + g[2] * sr[2]), du = (u0 + u1) / 2 - (g[0] * su[0] + g[1] * su[1] + g[2] * su[2]);
+      const center = [g[0] + sr[0] * dr + su[0] * du, g[1] + sr[1] * dr + su[1] * du, g[2] + sr[2] * dr + su[2] * du];
+      const extent = Math.ceil((Math.max(r1 - r0, u1 - u0) / 2 + 6) / 8) * 8;
+      return { center, extent, depth: extent * 2.5 + 150 };
+    }
+
+    function borne() {
+      const t = relief ? relief.taille : 96;
+      vise.x = borner(vise.x, -10, t + 10);
+      vise.z = borner(vise.z, -10, t + 10);
+      vise.D = borner(vise.D, DMIN, DMAX);
+    }
+    const visee = () => camera(vise.x, vise.z, vise.D, vise.yaw);
+
+    const cam = {
+      canvas, relief, bord: { n: false, s: false, e: false, o: false }, secousse: 0,
+      DMIN, DMAX,
+      get x() { return lis.x.x; }, get z() { return lis.z.x; }, get dist() { return lis.D.x; },
+      get cibleX() { return vise.x; }, set cibleX(v) { vise.x = v; borne(); },
+      get cibleZ() { return vise.z; }, set cibleZ(v) { vise.z = v; borne(); },
+      get yaw() { return vise.yaw; },
+      placer(x, z, D = vise.D, yaw = vise.yaw) {
+        Object.assign(vise, { x, z, D, yaw }); borne();
+        lis.x = canal(vise.x); lis.z = canal(vise.z); lis.D = canal(vise.D); lis.yaw = canal(vise.yaw);
+      },
+      viser(x, z) { vise.x = x; vise.z = z; borne(); },
+      /** Déplace la visée dans le plan du sol : droite et avant de l'écran, en mètres. */
+      glisser(droite, avant) {
+        const c = Math.cos(vise.yaw), s = Math.sin(vise.yaw);
+        vise.x += c * droite + s * avant; vise.z += s * droite - c * avant; borne();
+      },
+      /** Garde sous le curseur le point du sol saisi : le geste suit la main, sans lissage. */
+      saisir(px, py) { return sol(visee(), px, py); },
+      tenir(prise, px, py) {
+        const ici = sol(visee(), px, py);
+        if (!prise || !ici) return;
+        vise.x += prise[0] - ici[0]; vise.z += prise[1] - ici[1]; borne();
+        lis.x = canal(vise.x); lis.z = canal(vise.z);
+      },
+      /** Zoom d'un facteur vers le pixel (px, py) : le point du sol sous le curseur ne bouge pas. */
+      zoomer(facteur, px, py) {
+        const avant = px === undefined ? null : sol(visee(), px, py);
+        vise.D = borner(vise.D * facteur, DMIN, DMAX);
+        if (avant) {
+          const apres = sol(visee(), px, py);
+          if (apres) { vise.x += avant[0] - apres[0]; vise.z += avant[1] - apres[1]; borne(); }
+        }
+      },
+      tourner(da) { vise.yaw += da; },
+      touche(code, bas) { if (bas) touches.add(code); else touches.delete(code); },
+      relacher() { touches.clear(); },
+      /** Pixel CSS d'un point du monde pour la dernière vue, ou null s'il est derrière l'œil. */
+      projeter(x, y, z) {
+        if (!vue) return null;
+        const { right: r, up: u, forward: f } = vue.axes, p = vue.pos;
+        const dx = x - p[0], dy = y - p[1], dz = z - p[2], profondeur = dx * f[0] + dy * f[1] + dz * f[2];
+        if (profondeur < vue.near) return null;
+        const w = (canvas && canvas.clientWidth) || 800, h = (canvas && canvas.clientHeight) || 600;
+        const sx = (dx * r[0] + dy * r[1] + dz * r[2]) / (profondeur * TAN * aspect()), sy = (dx * u[0] + dy * u[1] + dz * u[2]) / (profondeur * TAN);
+        return [(sx + 1) * .5 * w, (1 - sy) * .5 * h, profondeur];
+      },
+      /** Point du sol sous un pixel CSS, pour la dernière vue. */
+      pointer(px, py) { return vue ? sol(vue, px, py) : null; },
+      get derniere() { return vue; }
+    };
+
+    /** Avance le lissage, le clavier et les bords ; rend la caméra du moteur pour cette image. */
+    cam.vue = function (dt) {
+      const pas = vise.D * 1.1 * dt;
+      let dr = 0, da = 0, rot = 0;
+      if (touches.has('gauche')) dr -= 1;
+      if (touches.has('droite')) dr += 1;
+      if (touches.has('avant')) da += 1;
+      if (touches.has('arriere')) da -= 1;
+      if (touches.has('tourneG')) rot -= 1;
+      if (touches.has('tourneD')) rot += 1;
+      if (touches.has('plus')) cam.zoomer(Math.exp(-1.6 * dt));
+      if (touches.has('moins')) cam.zoomer(Math.exp(1.6 * dt));
+      if (cam.bord.o) dr -= 1;
+      if (cam.bord.e) dr += 1;
+      if (cam.bord.n) da += 1;
+      if (cam.bord.s) da -= 1;
+      if (dr || da) cam.glisser(dr * pas, da * pas);
+      if (rot) vise.yaw += rot * 1.6 * dt;
+      const yaw = amortir(lis.yaw, lis.yaw.x + angle(vise.yaw - lis.yaw.x), 12, dt);
+      const x = amortir(lis.x, vise.x, 14, dt), z = amortir(lis.z, vise.z, 14, dt), D = amortir(lis.D, vise.D, 11, dt);
+      cam.secousse = Math.max(0, cam.secousse - dt * 2.4);
+      vue = camera(x, z, D, yaw);
+      // vue.sun = emprise(vue); — en attente de vérification du pass ombres
+      return vue;
+    };
+    return cam;
   }
 
-  B.vue = { creer, maj, camera3d, axes, curseur, YAW, PITCH, FOV };
+  // ————— compatibilité avec la coque (maj/camera3d/axes/curseur) —————
+  function maj(cam, dt) { cam.vue(dt); }
+  function camera3d(cam) { return cam.derniere || cam.vue(0); }
+  function curseur(cam, relief, mx, my, unites) {
+    const v = cam.derniere || cam.vue(0);
+    const d = rayonDe(v, cam, mx, my);
+    return relief.frapper(v.pos[0], v.pos[1], v.pos[2], d[0], d[1], d[2], unites);
+  }
+  function rayonDe(camVue, cam, px, py) {
+    const c = cam.canvas;
+    const w = (c && c.clientWidth) || 800, h = (c && c.clientHeight) || 600;
+    const nx = (px / w) * 2 - 1, ny = 1 - (py / h) * 2, { right: r, up: u, forward: f } = camVue.axes, k = w / h;
+    return [f[0] + (r[0] * nx * k + u[0] * ny) * TAN, f[1] + (r[1] * nx * k + u[1] * ny) * TAN, f[2] + (r[2] * nx * k + u[2] * ny) * TAN];
+  }
+
+  /** Le clavier de la caméra, comme dans Point de rupture. */
+  const CLAVIER = {
+    ArrowUp: 'avant', KeyW: 'avant', ArrowDown: 'arriere', KeyS: 'arriere',
+    ArrowLeft: 'gauche', KeyA: 'gauche', ArrowRight: 'droite', KeyD: 'droite',
+    Equal: 'plus', NumpadAdd: 'plus', PageUp: 'plus', Minus: 'moins', NumpadSubtract: 'moins', PageDown: 'moins',
+    KeyQ: 'tourneG', KeyE: 'tourneD'
+  };
+
+  B.vue = { creer, maj, camera3d, axes: (cam) => (cam.derniere || cam.vue(0)).axes, curseur, CLAVIER, DMIN, DMAX, FOV, YAW0 };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -6105,11 +6415,19 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       if (S.ecran === 'bilan-fin') ecranTitre();
       else { S.mission++; lancerMission(S.mission); }
     });
-    if (d.mini) d.mini.addEventListener('pointerdown', e => {
-      const r = d.mini.getBoundingClientRect();
-      S.cam.cibleX = (e.clientX - r.left) / r.width * S.etat.relief.taille;
-      S.cam.cibleZ = (e.clientY - r.top) / r.height * S.etat.relief.taille;
-    });
+    if (d.mini) {
+      // comme dans Point de rupture : clic, déplacer la vue ; glisser, la suivre
+      const viserIci = e => {
+        const r = d.mini.getBoundingClientRect();
+        S.cam.viser((e.clientX - r.left) / r.width * S.etat.relief.taille, (e.clientY - r.top) / r.height * S.etat.relief.taille);
+      };
+      let glisseMini = false;
+      d.mini.addEventListener('pointerdown', e => { glisseMini = true; d.mini.setPointerCapture(e.pointerId); viserIci(e); });
+      d.mini.addEventListener('pointermove', e => { if (glisseMini) viserIci(e); });
+      const fin = () => { glisseMini = false; };
+      d.mini.addEventListener('pointerup', fin);
+      d.mini.addEventListener('pointercancel', fin);
+    }
   }
 
   function ecranTitre() {
@@ -6207,10 +6525,8 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       S.rendu.setNappes(relief.nappes().concat([relief.nappeEau()]));
     }
 
-    S.cam = B.vue.creer(S.toile);
-    S.cam.x = S.cam.cibleX = decor.spawn.x;
-    S.cam.z = S.cam.cibleZ = decor.spawn.z - 6;
-    S.cam.dist = 34;
+    S.cam = B.vue.creer(S.toile, relief);
+    S.cam.placer(decor.spawn.x, decor.spawn.z - 6, 30);
 
     S.mini = construireMinicarte(relief, decor);
     S.ecran = 'jeu';
@@ -6263,18 +6579,6 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       }
     }
     const x = frappe.x, z = frappe.z;
-    if (S.mode === 'grenade') {
-      const u = bleus().find(b => b.grenades > 0);
-      if (u && B.armes.tirerGrenade(etat, u, { x, z }, etat.relief)) { etat.stats.grenades++; S.son && S.son.grenade(u.x, S.cam); }
-      S.mode = null;
-      return;
-    }
-    if (S.mode === 'roquette') {
-      const u = bleus().find(b => b.roquettes > 0);
-      if (u && B.armes.tirerRoquette(etat, u, { x, z }, etat.relief)) { S.son && S.son.roquette(u.x, S.cam); }
-      S.mode = null;
-      return;
-    }
     // avancer en formation
     const sel = S.selection.slice();
     sel.forEach((u, k) => {
@@ -6299,22 +6603,47 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
 
   function ordreTirOuvert(point) { S.droit = point ? { x: point.x, z: point.z } : null; }
 
+  // grenade ou roquette posée au clic gauche (le mode est armé par G ou R)
+  function poserProjectile(frappe) {
+    if (!S.etat || !frappe) return false;
+    const etat = S.etat;
+    if (S.mode === 'grenade') {
+      const u = bleus().find(b => b.grenades > 0);
+      if (u && B.armes.tirerGrenade(etat, u, { x: frappe.x, z: frappe.z }, etat.relief)) { etat.stats.grenades++; S.son && S.son.grenade(u.x, S.cam); }
+      S.mode = null;
+      return true;
+    }
+    if (S.mode === 'roquette') {
+      const u = bleus().find(b => b.roquettes > 0);
+      if (u && B.armes.tirerRoquette(etat, u, { x: frappe.x, z: frappe.z }, etat.relief)) { S.son && S.son.roquette(u.x, S.cam); }
+      S.mode = null;
+      return true;
+    }
+    return false;
+  }
+
+  // clic gauche court : l'homme sous le curseur ; Maj pour ajouter au groupe sélectionné
+  function selectionClic(frappe, mx, my, ajouter) {
+    if (!S.etat) return;
+    if (frappe && frappe.type === 'unite' && frappe.unite.camp === 'bleu' && frappe.unite.etat !== 'mort') {
+      const u = frappe.unite;
+      if (ajouter) u.selectionne = !u.selectionne;
+      else { for (const v of S.escouade) v.selectionne = false; u.selectionne = true; }
+      S.selection = bleus().filter(v => v.selectionne);
+      if (!S.selection.length) selectionTous();
+      return;
+    }
+    if (ajouter) return;
+    selectionCadre(mx - 10, my - 10, mx + 10, my + 10);
+  }
+
   function selectionCadre(x0, y0, x1, y1) {
-    if (!S.etat || !S.toile) return;
-    const c = S.toile, w = c.clientWidth || 1, h = c.clientHeight || 1;
-    const c3 = B.vue.camera3d(S.cam, S.etat.relief);
-    const a = B.vue.axes(S.cam);
-    const tan = Math.tan(S.cam.fov * Math.PI / 360), aspect = w / h;
+    if (!S.etat || !S.toile || !S.cam) return;
+    const xa = Math.min(x0, x1), xb = Math.max(x0, x1), ya = Math.min(y0, y1), yb = Math.max(y0, y1);
     let trouve = false;
     for (const u of bleus()) {
-      const uy = S.etat.relief.hauteur(u.x, u.z) + .9;
-      const rx = u.x - c3.pos[0], ry = uy - c3.pos[1], rz = u.z - c3.pos[2];
-      const zc = rx * a.forward[0] + ry * a.forward[1] + rz * a.forward[2];
-      if (zc < 1) continue;
-      const xc = rx * a.right[0] + ry * a.right[1] + rz * a.right[2];
-      const yc = rx * a.up[0] + ry * a.up[1] + rz * a.up[2];
-      const sx = (xc / (zc * tan * aspect) + 1) / 2 * w, sy = (1 - yc / (zc * tan)) / 2 * h;
-      if (sx >= Math.min(x0, x1) && sx <= Math.max(x0, x1) && sy >= Math.min(y0, y1) && sy <= Math.max(y0, y1)) { u.selectionne = true; trouve = true; }
+      const e = S.cam.projeter(u.x, S.etat.relief.hauteur(u.x, u.z) + .9, u.z);
+      if (e && e[0] >= xa && e[0] <= xb && e[1] >= ya && e[1] <= yb) { u.selectionne = true; trouve = true; }
       else u.selectionne = false;
     }
     if (trouve) S.selection = bleus().filter(u => u.selectionne);
@@ -6611,9 +6940,9 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
   }
 
   B.jeu = {
-    S, maj, mailler, ordreClic, ordreTirOuvert, selectionCadre, selectionUn, selectionTous,
-    selectionGroupe, definirGroupe, ecranTitre, nouvelleCampagne, lancerMission, brancherDom,
-    voiler, message, bleus
+    S, maj, mailler, ordreClic, ordreTirOuvert, selectionCadre, selectionClic, poserProjectile,
+    selectionUn, selectionTous, selectionGroupe, definirGroupe, ecranTitre, nouvelleCampagne,
+    lancerMission, brancherDom, voiler, message, bleus
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -6628,15 +6957,12 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
   if (typeof G.document === 'undefined') { B.main = { demarrer() {} }; return; }
 
   const S = () => B.jeu.S;
-  let toile, rendu, entrees, boutonDroit = false, curseur = { x: 0, y: 0 }, glisse = null, dernierT = 0, accumulateur = 0;
+  let toile, rendu, entrees, curseur = { x: 0, y: 0 }, geste = null, cadreEl = null, dernierT = 0, accumulateur = 0;
+  const TAN26 = Math.tan(26 * Math.PI / 360);
   const PAS = 1 / 60;
 
   function creerEntrees() {
     const actions = [
-      { id: 'haut', label: 'Haut', type: 'hold', keys: ['KeyW', 'ArrowUp'], touch: '↑' },
-      { id: 'bas', label: 'Bas', type: 'hold', keys: ['KeyS', 'ArrowDown'], touch: '↓' },
-      { id: 'gauche', label: 'Gauche', type: 'hold', keys: ['KeyA', 'ArrowLeft'], touch: '←' },
-      { id: 'droite', label: 'Droite', type: 'hold', keys: ['KeyD', 'ArrowRight'], touch: '→' },
       { id: 'un', label: 'Homme 1', type: 'press', keys: ['Digit1'] },
       { id: 'deux', label: 'Homme 2', type: 'press', keys: ['Digit2'] },
       { id: 'trois', label: 'Homme 3', type: 'press', keys: ['Digit3'] },
@@ -6652,52 +6978,101 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
     return G.FInput.create({ actions, device: 'keyboard', singlePad: true, menu: false, allowKey });
   }
 
+  // Le geste à la Point de rupture : clic court = sélection, glisser = cadre, maintien = tir ;
+  // clic droit = déplacement ; Alt+clic ou clic du milieu = la carte saisie à la main.
+  function montrerCadre(x0, y0, x1, y1) {
+    if (!cadreEl) cadreEl = document.getElementById('cadre');
+    if (!cadreEl) return;
+    cadreEl.hidden = false;
+    Object.assign(cadreEl.style, { left: Math.min(x0, x1) + 'px', top: Math.min(y0, y1) + 'px', width: Math.abs(x1 - x0) + 'px', height: Math.abs(y1 - y0) + 'px' });
+  }
+  function cacherCadre() { if (cadreEl) cadreEl.hidden = true; }
+  function reposerBords() {
+    const b = S().cam && S().cam.bord;
+    if (b) { b.n = b.s = b.o = b.e = false; }
+  }
+
   function brancherPointeurs() {
     toile.addEventListener('contextmenu', e => e.preventDefault());
     toile.addEventListener('pointerdown', e => {
-      B.jeu.S.son && B.jeu.S.son.demarrer();
-      toile.setPointerCapture(e.pointerId);
+      S().son && S().son.demarrer();
+      try { toile.setPointerCapture(e.pointerId); } catch (err) { /* pointeur déjà relâché : le geste suit sans capture */ }
       const r = toile.getBoundingClientRect();
       curseur.x = e.clientX - r.left; curseur.y = e.clientY - r.top;
-      if (e.button === 2) { boutonDroit = true; tirerDroit(); return; }
-      if (e.button === 0) glisse = { x0: curseur.x, y0: curseur.y, x1: curseur.x, y1: curseur.y };
+      const cam = S().cam;
+      if (!cam || S().ecran !== 'jeu') return;
+      if (e.button === 1 || (e.button === 0 && e.altKey)) { reposerBords(); geste = { type: 'carte', prise: cam.saisir(curseur.x, curseur.y) }; e.preventDefault(); return; }
+      if (e.button === 2) { const f = frapperCurseur(); if (f) B.jeu.ordreClic(f, curseur.x, curseur.y); return; }
+      if (e.button === 0) geste = { type: 'attente', x0: curseur.x, y0: curseur.y, t0: performance.now() };
     });
     toile.addEventListener('pointermove', e => {
       const r = toile.getBoundingClientRect();
       curseur.x = e.clientX - r.left; curseur.y = e.clientY - r.top;
-      if (glisse) { glisse.x1 = curseur.x; glisse.y1 = curseur.y; }
-      // les bords de l'écran font glisser la caméra
-      const b = S().cam && S().cam.bord;
-      if (b) {
-        b.n = curseur.y < 14; b.s = curseur.y > r.height - 14;
-        b.o = curseur.x < 14; b.e = curseur.x > r.width - 14;
+      const cam = S().cam;
+      if (!cam) return;
+      if (!geste && cam.bord) {
+        cam.bord.n = curseur.y < 14; cam.bord.s = curseur.y > r.height - 14;
+        cam.bord.o = curseur.x < 14; cam.bord.e = curseur.x > r.width - 14;
       }
-      if (boutonDroit) tirerDroit();
-    });
-    toile.addEventListener('pointerup', e => {
-      const r = toile.getBoundingClientRect();
-      if (e.button === 2) { boutonDroit = false; B.jeu.ordreTirOuvert(null); return; }
-      if (e.button !== 0 || !glisse) return;
-      const dx = Math.abs(glisse.x1 - glisse.x0), dy = Math.abs(glisse.y1 - glisse.y0);
-      if (dx > 8 || dy > 8) B.jeu.selectionCadre(glisse.x0, glisse.y0, glisse.x1, glisse.y1);
-      else {
-        const frappe = frapperCurseur();
-        B.jeu.ordreClic(frappe, curseur.x, curseur.y);
+      if (!geste) return;
+      if (geste.type === 'carte') { cam.tenir(geste.prise, curseur.x, curseur.y); return; }
+      if (geste.type === 'attente') {
+        if (Math.hypot(curseur.x - geste.x0, curseur.y - geste.y0) > 6) { reposerBords(); geste.type = 'cadre'; montrerCadre(geste.x0, geste.y0, curseur.x, curseur.y); }
+        else if (performance.now() - geste.t0 > 150 && !S().mode) { reposerBords(); geste.type = 'tir'; tirerAuCurseur(); }
+        return;
       }
-      glisse = null;
+      if (geste.type === 'cadre') { montrerCadre(geste.x0, geste.y0, curseur.x, curseur.y); return; }
+      if (geste.type === 'tir') tirerAuCurseur();
     });
+    const fin = e => {
+      if (!geste) return;
+      if (e.type === 'pointercancel') { if (geste.type === 'tir') B.jeu.ordreTirOuvert(null); cacherCadre(); geste = null; return; }
+      if ((geste.type === 'tir' || geste.type === 'cadre' || geste.type === 'attente') && e.button !== 0) return;
+      if (geste.type === 'carte') { geste = null; return; }
+      if (geste.type === 'tir') { B.jeu.ordreTirOuvert(null); geste = null; return; }
+      if (geste.type === 'cadre') { cacherCadre(); B.jeu.selectionCadre(geste.x0, geste.y0, curseur.x, curseur.y); geste = null; return; }
+      if (geste.type === 'attente') {
+        const f = frapperCurseur();
+        if (S().mode) B.jeu.poserProjectile(f);
+        else B.jeu.selectionClic(f, curseur.x, curseur.y, e.shiftKey);
+        geste = null;
+      }
+    };
+    toile.addEventListener('pointerup', fin);
+    toile.addEventListener('pointercancel', fin);
     toile.addEventListener('wheel', e => {
       e.preventDefault();
       const cam = S().cam;
-      if (cam) cam.dist = Math.max(16, Math.min(64, cam.dist + Math.sign(e.deltaY) * 3));
+      if (!cam) return;
+      const r = toile.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      const ligne = e.deltaMode === 1, dy = ligne ? e.deltaY * 33 : e.deltaY, dx = ligne ? e.deltaX * 33 : e.deltaX;
+      const molette = ligne || (e.deltaX === 0 && e.wheelDeltaY && Math.abs(e.wheelDeltaY) % 120 === 0);
+      if (e.ctrlKey) cam.zoomer(Math.exp(dy * .01), x, y);
+      else if (e.shiftKey) cam.tourner((dy || dx) * .004);
+      else if (molette) cam.zoomer(Math.pow(1.18, Math.sign(dy) * Math.min(4, Math.abs(dy) / 100 || 1)), x, y);
+      else {
+        // deux doigts sur le pavé : la carte suit les doigts
+        const k = 2 * (cam.derniere ? cam.derniere.D : 30) * TAN26 / (toile.clientHeight || 600);
+        cam.glisser(dx * k, -dy * k);
+      }
     }, { passive: false });
     G.addEventListener('keydown', e => {
-      if (entrees) entrees.keyDown(e.code, performance.now() / 1000, e.repeat, e.key);
+      const champ = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' || e.target.isContentEditable);
+      if (entrees && !champ) entrees.keyDown(e.code, performance.now() / 1000, e.repeat, e.key);
       if (e.ctrlKey && /^Digit[1-4]$/.test(e.code)) { e.preventDefault(); B.jeu.definirGroupe(+e.code.slice(5)); }
       if (/^F[1-4]$/.test(e.code)) B.jeu.selectionGroupe(+e.code.slice(1));
+      const cam = S().cam;
+      if (cam && !champ && !e.ctrlKey && !e.metaKey) {
+        const nom = B.vue.CLAVIER[e.code];
+        if (nom) { cam.touche(nom, true); e.preventDefault(); }
+      }
     });
-    G.addEventListener('keyup', e => { if (entrees) entrees.keyUp(e.code); });
-    G.addEventListener('blur', () => { boutonDroit = false; B.jeu.ordreTirOuvert(null); if (entrees) entrees.clear(); });
+    G.addEventListener('keyup', e => {
+      if (entrees) entrees.keyUp(e.code);
+      const cam = S().cam, nom = cam && B.vue.CLAVIER[e.code];
+      if (nom) cam.touche(nom, false);
+    });
+    G.addEventListener('blur', () => { B.jeu.ordreTirOuvert(null); cacherCadre(); geste = null; if (entrees) entrees.clear(); S().cam && S().cam.relacher(); });
   }
 
   function frapperCurseur() {
@@ -6706,19 +7081,19 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
     return B.vue.curseur(s.cam, s.etat.relief, curseur.x, curseur.y, s.etat.unites);
   }
 
-  function tirerDroit() {
+  function tirerAuCurseur() {
     const frappe = frapperCurseur();
     if (frappe) B.jeu.ordreTirOuvert({ x: frappe.x, z: frappe.z });
   }
 
   function pollEntrees() {
-    if (!entrees) return;
-    const f = entrees.frame(), a = entrees.step();
-    const s = S();
-    if (s.cam) {
-      s.cam.bord.n = s.cam.bord.n || !!a.haut; s.cam.bord.s = s.cam.bord.s || !!a.bas;
-      s.cam.bord.o = s.cam.bord.o || !!a.gauche; s.cam.bord.e = s.cam.bord.e || !!a.droite;
+    // maintien sans bouger : le geste bascule en tir, même si la souris ne tremble pas
+    if (geste && geste.type === 'attente' && !S().mode && performance.now() - geste.t0 > 150) {
+      reposerBords(); geste.type = 'tir'; tirerAuCurseur();
     }
+    if (!entrees) return;
+    const f = entrees.frame();
+    const s = S();
     for (const id of f.pressed) {
       if (id === 'un') B.jeu.selectionUn(0);
       else if (id === 'deux') B.jeu.selectionUn(1);

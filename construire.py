@@ -28,6 +28,7 @@ MODULES = [
     'ferro/engine.js',
     'relief.js',
     'decor.js',
+    'corps.js',
     'troupe.js',
     'armes.js',
     'ia.js',

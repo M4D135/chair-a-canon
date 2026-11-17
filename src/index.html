@@ -39,15 +39,17 @@
     <div id="regles-boite">
       <h2>COMMENT JOUER</h2>
       <table>
-        <tr><td><b>Clic gauche</b></td><td>ordre au sol : avancer · sur un ennemi : ouvrir le feu · sur une caisse : ramasser</td></tr>
-        <tr><td><b>Clic gauche maintenu + glisser</b></td><td>encadrer plusieurs hommes</td></tr>
-        <tr><td><b>Clic droit (maintenu)</b></td><td>viser et tirer à la mitrailleuse sur le curseur</td></tr>
+        <tr><td><b>Clic gauche maintenu</b></td><td>tirer à la mitrailleuse sur le curseur (maintenu = tir continu)</td></tr>
+        <tr><td><b>Clic gauche</b></td><td>sélectionner un homme — <b>glisser</b> : encadrer plusieurs hommes</td></tr>
+        <tr><td><b>Clic droit</b></td><td>déplacer l'escouade sélectionnée · sur un ennemi : l'attaquer</td></tr>
         <tr><td><b>G</b> puis clic</td><td>grenade au point visé</td></tr>
         <tr><td><b>R</b> puis clic</td><td>roquette (si disponible)</td></tr>
         <tr><td><b>1 · 2 · 3 · 4</b></td><td>sélectionner un homme — <b>T</b> : tous</td></tr>
         <tr><td><b>Ctrl+1..4</b> / <b>F1..F4</b></td><td>former les groupes / rappeler un groupe</td></tr>
         <tr><td><b>Espace</b></td><td>ramener la caméra sur la sélection</td></tr>
-        <tr><td><b>WASD / bords / molette</b></td><td>déplacer et zoomer la caméra — clic sur la minicarte : s'y rendre</td></tr>
+        <tr><td><b>WASD / flèches / bords</b></td><td>déplacer la caméra — <b>molette</b> : zoomer au curseur</td></tr>
+        <tr><td><b>Alt+clic ou clic du milieu</b></td><td>saisir la carte à la main — <b>Q/E</b> ou <b>Maj+molette</b> : tourner</td></tr>
+        <tr><td><b>Minicarte</b></td><td>clic ou glisser : déplacer la vue</td></tr>
         <tr><td><b>Échap</b></td><td>pause</td></tr>
       </table>
       <p>Objectif : éliminer toute la garnison, puis planter le drapeau au camp. Les balles tuent d'une seule touche ;
@@ -57,6 +59,7 @@
   </div>
 </div>
 
+<div id="cadre" hidden></div>
 <div id="voile" class="cache"><div id="voile-texte"></div><div id="voile-sous"></div></div>
 
 <div id="pause" class="cache">

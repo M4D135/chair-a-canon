@@ -62,3 +62,4 @@ button.choix:hover{background:#31391f;border-color:var(--olive)}
 #bilan-lignes td{padding:4px 16px;font-size:14px;border-bottom:1px solid #2c3322}
 #bilan-lignes td:first-child{text-align:right;color:#8d9478}
 #bilan-note{font-size:13px;color:#ffd98a;margin-bottom:14px;min-height:16px}
+#cadre{position:fixed;border:1px solid #ffd75a;background:rgba(255,215,90,.12);pointer-events:none;z-index:6}

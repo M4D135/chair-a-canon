@@ -6,15 +6,12 @@
   if (typeof G.document === 'undefined') { B.main = { demarrer() {} }; return; }
 
   const S = () => B.jeu.S;
-  let toile, rendu, entrees, boutonDroit = false, curseur = { x: 0, y: 0 }, glisse = null, dernierT = 0, accumulateur = 0;
+  let toile, rendu, entrees, curseur = { x: 0, y: 0 }, geste = null, cadreEl = null, dernierT = 0, accumulateur = 0;
+  const TAN26 = Math.tan(26 * Math.PI / 360);
   const PAS = 1 / 60;
 
   function creerEntrees() {
     const actions = [
-      { id: 'haut', label: 'Haut', type: 'hold', keys: ['KeyW', 'ArrowUp'], touch: '↑' },
-      { id: 'bas', label: 'Bas', type: 'hold', keys: ['KeyS', 'ArrowDown'], touch: '↓' },
-      { id: 'gauche', label: 'Gauche', type: 'hold', keys: ['KeyA', 'ArrowLeft'], touch: '←' },
-      { id: 'droite', label: 'Droite', type: 'hold', keys: ['KeyD', 'ArrowRight'], touch: '→' },
       { id: 'un', label: 'Homme 1', type: 'press', keys: ['Digit1'] },
       { id: 'deux', label: 'Homme 2', type: 'press', keys: ['Digit2'] },
       { id: 'trois', label: 'Homme 3', type: 'press', keys: ['Digit3'] },
@@ -30,52 +27,101 @@
     return G.FInput.create({ actions, device: 'keyboard', singlePad: true, menu: false, allowKey });
   }
 
+  // Le geste à la Point de rupture : clic court = sélection, glisser = cadre, maintien = tir ;
+  // clic droit = déplacement ; Alt+clic ou clic du milieu = la carte saisie à la main.
+  function montrerCadre(x0, y0, x1, y1) {
+    if (!cadreEl) cadreEl = document.getElementById('cadre');
+    if (!cadreEl) return;
+    cadreEl.hidden = false;
+    Object.assign(cadreEl.style, { left: Math.min(x0, x1) + 'px', top: Math.min(y0, y1) + 'px', width: Math.abs(x1 - x0) + 'px', height: Math.abs(y1 - y0) + 'px' });
+  }
+  function cacherCadre() { if (cadreEl) cadreEl.hidden = true; }
+  function reposerBords() {
+    const b = S().cam && S().cam.bord;
+    if (b) { b.n = b.s = b.o = b.e = false; }
+  }
+
   function brancherPointeurs() {
     toile.addEventListener('contextmenu', e => e.preventDefault());
     toile.addEventListener('pointerdown', e => {
-      B.jeu.S.son && B.jeu.S.son.demarrer();
-      toile.setPointerCapture(e.pointerId);
+      S().son && S().son.demarrer();
+      try { toile.setPointerCapture(e.pointerId); } catch (err) { /* pointeur déjà relâché : le geste suit sans capture */ }
       const r = toile.getBoundingClientRect();
       curseur.x = e.clientX - r.left; curseur.y = e.clientY - r.top;
-      if (e.button === 2) { boutonDroit = true; tirerDroit(); return; }
-      if (e.button === 0) glisse = { x0: curseur.x, y0: curseur.y, x1: curseur.x, y1: curseur.y };
+      const cam = S().cam;
+      if (!cam || S().ecran !== 'jeu') return;
+      if (e.button === 1 || (e.button === 0 && e.altKey)) { reposerBords(); geste = { type: 'carte', prise: cam.saisir(curseur.x, curseur.y) }; e.preventDefault(); return; }
+      if (e.button === 2) { const f = frapperCurseur(); if (f) B.jeu.ordreClic(f, curseur.x, curseur.y); return; }
+      if (e.button === 0) geste = { type: 'attente', x0: curseur.x, y0: curseur.y, t0: performance.now() };
     });
     toile.addEventListener('pointermove', e => {
       const r = toile.getBoundingClientRect();
       curseur.x = e.clientX - r.left; curseur.y = e.clientY - r.top;
-      if (glisse) { glisse.x1 = curseur.x; glisse.y1 = curseur.y; }
-      // les bords de l'écran font glisser la caméra
-      const b = S().cam && S().cam.bord;
-      if (b) {
-        b.n = curseur.y < 14; b.s = curseur.y > r.height - 14;
-        b.o = curseur.x < 14; b.e = curseur.x > r.width - 14;
+      const cam = S().cam;
+      if (!cam) return;
+      if (!geste && cam.bord) {
+        cam.bord.n = curseur.y < 14; cam.bord.s = curseur.y > r.height - 14;
+        cam.bord.o = curseur.x < 14; cam.bord.e = curseur.x > r.width - 14;
       }
-      if (boutonDroit) tirerDroit();
-    });
-    toile.addEventListener('pointerup', e => {
-      const r = toile.getBoundingClientRect();
-      if (e.button === 2) { boutonDroit = false; B.jeu.ordreTirOuvert(null); return; }
-      if (e.button !== 0 || !glisse) return;
-      const dx = Math.abs(glisse.x1 - glisse.x0), dy = Math.abs(glisse.y1 - glisse.y0);
-      if (dx > 8 || dy > 8) B.jeu.selectionCadre(glisse.x0, glisse.y0, glisse.x1, glisse.y1);
-      else {
-        const frappe = frapperCurseur();
-        B.jeu.ordreClic(frappe, curseur.x, curseur.y);
+      if (!geste) return;
+      if (geste.type === 'carte') { cam.tenir(geste.prise, curseur.x, curseur.y); return; }
+      if (geste.type === 'attente') {
+        if (Math.hypot(curseur.x - geste.x0, curseur.y - geste.y0) > 6) { reposerBords(); geste.type = 'cadre'; montrerCadre(geste.x0, geste.y0, curseur.x, curseur.y); }
+        else if (performance.now() - geste.t0 > 150 && !S().mode) { reposerBords(); geste.type = 'tir'; tirerAuCurseur(); }
+        return;
       }
-      glisse = null;
+      if (geste.type === 'cadre') { montrerCadre(geste.x0, geste.y0, curseur.x, curseur.y); return; }
+      if (geste.type === 'tir') tirerAuCurseur();
     });
+    const fin = e => {
+      if (!geste) return;
+      if (e.type === 'pointercancel') { if (geste.type === 'tir') B.jeu.ordreTirOuvert(null); cacherCadre(); geste = null; return; }
+      if ((geste.type === 'tir' || geste.type === 'cadre' || geste.type === 'attente') && e.button !== 0) return;
+      if (geste.type === 'carte') { geste = null; return; }
+      if (geste.type === 'tir') { B.jeu.ordreTirOuvert(null); geste = null; return; }
+      if (geste.type === 'cadre') { cacherCadre(); B.jeu.selectionCadre(geste.x0, geste.y0, curseur.x, curseur.y); geste = null; return; }
+      if (geste.type === 'attente') {
+        const f = frapperCurseur();
+        if (S().mode) B.jeu.poserProjectile(f);
+        else B.jeu.selectionClic(f, curseur.x, curseur.y, e.shiftKey);
+        geste = null;
+      }
+    };
+    toile.addEventListener('pointerup', fin);
+    toile.addEventListener('pointercancel', fin);
     toile.addEventListener('wheel', e => {
       e.preventDefault();
       const cam = S().cam;
-      if (cam) cam.dist = Math.max(16, Math.min(64, cam.dist + Math.sign(e.deltaY) * 3));
+      if (!cam) return;
+      const r = toile.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      const ligne = e.deltaMode === 1, dy = ligne ? e.deltaY * 33 : e.deltaY, dx = ligne ? e.deltaX * 33 : e.deltaX;
+      const molette = ligne || (e.deltaX === 0 && e.wheelDeltaY && Math.abs(e.wheelDeltaY) % 120 === 0);
+      if (e.ctrlKey) cam.zoomer(Math.exp(dy * .01), x, y);
+      else if (e.shiftKey) cam.tourner((dy || dx) * .004);
+      else if (molette) cam.zoomer(Math.pow(1.18, Math.sign(dy) * Math.min(4, Math.abs(dy) / 100 || 1)), x, y);
+      else {
+        // deux doigts sur le pavé : la carte suit les doigts
+        const k = 2 * (cam.derniere ? cam.derniere.D : 30) * TAN26 / (toile.clientHeight || 600);
+        cam.glisser(dx * k, -dy * k);
+      }
     }, { passive: false });
     G.addEventListener('keydown', e => {
-      if (entrees) entrees.keyDown(e.code, performance.now() / 1000, e.repeat, e.key);
+      const champ = e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' || e.target.isContentEditable);
+      if (entrees && !champ) entrees.keyDown(e.code, performance.now() / 1000, e.repeat, e.key);
       if (e.ctrlKey && /^Digit[1-4]$/.test(e.code)) { e.preventDefault(); B.jeu.definirGroupe(+e.code.slice(5)); }
       if (/^F[1-4]$/.test(e.code)) B.jeu.selectionGroupe(+e.code.slice(1));
+      const cam = S().cam;
+      if (cam && !champ && !e.ctrlKey && !e.metaKey) {
+        const nom = B.vue.CLAVIER[e.code];
+        if (nom) { cam.touche(nom, true); e.preventDefault(); }
+      }
     });
-    G.addEventListener('keyup', e => { if (entrees) entrees.keyUp(e.code); });
-    G.addEventListener('blur', () => { boutonDroit = false; B.jeu.ordreTirOuvert(null); if (entrees) entrees.clear(); });
+    G.addEventListener('keyup', e => {
+      if (entrees) entrees.keyUp(e.code);
+      const cam = S().cam, nom = cam && B.vue.CLAVIER[e.code];
+      if (nom) cam.touche(nom, false);
+    });
+    G.addEventListener('blur', () => { B.jeu.ordreTirOuvert(null); cacherCadre(); geste = null; if (entrees) entrees.clear(); S().cam && S().cam.relacher(); });
   }
 
   function frapperCurseur() {
@@ -84,19 +130,19 @@
     return B.vue.curseur(s.cam, s.etat.relief, curseur.x, curseur.y, s.etat.unites);
   }
 
-  function tirerDroit() {
+  function tirerAuCurseur() {
     const frappe = frapperCurseur();
     if (frappe) B.jeu.ordreTirOuvert({ x: frappe.x, z: frappe.z });
   }
 
   function pollEntrees() {
-    if (!entrees) return;
-    const f = entrees.frame(), a = entrees.step();
-    const s = S();
-    if (s.cam) {
-      s.cam.bord.n = s.cam.bord.n || !!a.haut; s.cam.bord.s = s.cam.bord.s || !!a.bas;
-      s.cam.bord.o = s.cam.bord.o || !!a.gauche; s.cam.bord.e = s.cam.bord.e || !!a.droite;
+    // maintien sans bouger : le geste bascule en tir, même si la souris ne tremble pas
+    if (geste && geste.type === 'attente' && !S().mode && performance.now() - geste.t0 > 150) {
+      reposerBords(); geste.type = 'tir'; tirerAuCurseur();
     }
+    if (!entrees) return;
+    const f = entrees.frame();
+    const s = S();
     for (const id of f.pressed) {
       if (id === 'un') B.jeu.selectionUn(0);
       else if (id === 'deux') B.jeu.selectionUn(1);
