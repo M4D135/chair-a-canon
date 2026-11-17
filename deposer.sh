@@ -5,7 +5,7 @@
 #     ~/apps/chair-a-canon/releases/<commit>/index.html   page d'un commit ; les 3 plus récentes sont gardées
 #     ~/apps/chair-a-canon/current                         lien vers la version en ligne, basculé d'un coup
 #     ~/apps/caddy-shared/vhosts.d/canon.estrasse.fr.Caddyfile  copie de deploiement/, appliquée par apply-vhosts.sh
-# Le VPS n'a pas accès au dépôt privé : la page part de Spark.
+# Le VPS n'a pas accès au dépôt public : la page part de Spark.
 # Refuse de déposer une page qui ne serait pas celle du commit : sources, page, vhost et ce script doivent être
 # commités, avant et après la construction.
 # Retour arrière : ssh amiga 'ln -sfn releases/<commit> ~/apps/chair-a-canon/current.new && mv -T ~/apps/chair-a-canon/current.new ~/apps/chair-a-canon/current'
