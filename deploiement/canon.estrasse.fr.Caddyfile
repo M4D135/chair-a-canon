@@ -1,0 +1,11 @@
+# CHAIR À CANON (github.com/M4D135/chair-a-canon, dépôt privé) : clone procédural de Cannon Fodder, une seule page HTML autonome.
+# Fichiers : /home/ddd/apps/chair-a-canon/current -> releases/<commit>. La page est déposée depuis Spark par deposer.sh,
+# sans timer : le VPS n'a pas accès au dépôt privé. Certificat : l'applicateur caddy-shared déclare ce domaine
+# en ACME, d'après le nom de ce fichier.
+canon.estrasse.fr {
+	import security_headers
+	root * /home/ddd/apps/chair-a-canon/current
+	encode zstd gzip
+	header Cache-Control "no-cache"
+	file_server
+}
