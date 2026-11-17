@@ -1,8 +1,8 @@
 {
   "page": "dist/chair-a-canon.html",
-  "octets": 436796,
-  "gzip": 136735,
-  "sha256": "5435791c89b096e34fd5f7082b3de6d806df52593b742cf46ae8b723eb343ee4",
+  "octets": 437057,
+  "gzip": 136874,
+  "sha256": "109d61cc84b3324782f60c42e2e0bf516e85e0caeebc0fc0de44674ccb901c21",
   "moteur": "0.3.3",
   "sources": {
     "ferro/renderer.js": 209041,
@@ -20,6 +20,6 @@
     "son.js": 1963,
     "vue.js": 3223,
     "coque.js": 23537,
-    "main.js": 7272
+    "main.js": 7533
   }
 }

@@ -25,7 +25,9 @@
       { id: 'centrer', label: 'Centrer', type: 'press', keys: ['Space'] },
       { id: 'pause', label: 'Pause', type: 'press', keys: ['Escape'] }
     ];
-    return G.FInput.create({ actions, device: 'keyboard', singlePad: true, menu: false });
+    // la liste blanche du moteur refuse Échap et les F : on l'étend pour la pause et les groupes
+    const allowKey = code => /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right)|Shift(Left|Right)|Space|Enter|Backspace|Tab|Escape|F[1-9])$/.test(code);
+    return G.FInput.create({ actions, device: 'keyboard', singlePad: true, menu: false, allowKey });
   }
 
   function brancherPointeurs() {

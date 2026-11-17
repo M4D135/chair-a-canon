@@ -96,7 +96,7 @@ button.choix:hover{background:#31391f;border-color:var(--olive)}
       <button id="btn-campagne" class="choix">CAMPAGNE</button>
       <button id="btn-regles" class="choix">COMMENT JOUER</button>
     </div>
-    <div id="titre-version">V0.2</div>
+    <div id="titre-version">V0.3</div>
   </div>
   <div id="regles" class="cache">
     <div id="regles-boite">
@@ -6647,7 +6647,9 @@ G.FInput={version:1,PAD_BUTTONS,TUNE,create,defaults,normalize,assign,unbind,key
       { id: 'centrer', label: 'Centrer', type: 'press', keys: ['Space'] },
       { id: 'pause', label: 'Pause', type: 'press', keys: ['Escape'] }
     ];
-    return G.FInput.create({ actions, device: 'keyboard', singlePad: true, menu: false });
+    // la liste blanche du moteur refuse Échap et les F : on l'étend pour la pause et les groupes
+    const allowKey = code => /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right)|Shift(Left|Right)|Space|Enter|Backspace|Tab|Escape|F[1-9])$/.test(code);
+    return G.FInput.create({ actions, device: 'keyboard', singlePad: true, menu: false, allowKey });
   }
 
   function brancherPointeurs() {
